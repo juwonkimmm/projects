@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 import streamlit as st
+# from typing import List, Tuple  # (파이썬 3.8/3.9 호환용 필요 시 주석 해제)
 
 this_year = datetime.today().year
 current_month = datetime.today().month
@@ -37,9 +38,13 @@ def create_sidebar():
         st.info(f"선택된 날짜: {st.session_state.year}년 {st.session_state.month}월")
 
 def get_month_index(year, month):
-    end_date = f"{year}-{month+1}"
-    date_index = pd.date_range(end=end_date, periods=12, freq='M')
-    return [f"{date.year % 100}년 {date.month}월" for date in date_index]
+    """
+    year, month 기준으로 '최근 12개월'의 말일 인덱스를 안전하게 생성.
+    12월 → 'YYYY-13' 문제 방지.
+    """
+    end = pd.Timestamp(year=year, month=month, day=1) + pd.offsets.MonthEnd(1)
+    date_index = pd.date_range(end=end, periods=12, freq='M')
+    return [f"{d.year % 100}년 {d.month}월" for d in date_index]
 
 def get_year_mean_index(year):
     end_date = f"{year}-11"
@@ -185,8 +190,8 @@ def update_item_form(df):
 # PSI
 # ---------------------------------------------
 def create_psi_form(year, month):
-    end_date = f"{year}-{month+1}"
-    date_index = pd.date_range(end=end_date, periods=12, freq='M')
+    end = pd.Timestamp(year=year, month=month, day=1) + pd.offsets.MonthEnd(1)
+    date_index = pd.date_range(end=end, periods=12, freq='M')
     index = [f"{d.year % 100}.{d.month}" for d in date_index]
     columns = ['원재료 입고①', '매출②', '총재고③', '출고율(②/①)', '재고율(③/②)']
     return pd.DataFrame(0, index=index, columns=columns)
@@ -519,6 +524,155 @@ def create_board_summary_table(year: int,
 
     return out
 
+# =========================
+# 부적합(포항) 요약 테이블
+# =========================
+
+# --- 공통: 순서 강제 유틸 ---
+def order_like(df: pd.DataFrame, order: list[tuple]) -> pd.DataFrame:
+    """
+    df.index가 MultiIndex일 때, order에 적힌 튜플 순서대로 정렬.
+    order에 없는 나머지 행은 기존 순서를 유지한 채 뒤에 붙인다.
+    """
+    if not isinstance(df.index, pd.MultiIndex):
+        return df
+    cur = list(df.index)
+    seen = set()
+    head = [t for t in order if t in cur and not (t in seen or seen.add(t))]
+    tail = [t for t in cur if t not in set(head)]
+    return df.reindex(head + tail)
+
+
+def create_defect_summary_pohang(year:int,
+                                 month:int,
+                                 data:pd.DataFrame,
+                                 months_window:tuple=(5,6,7),
+                                 plant_name:str="포항") -> pd.DataFrame:
+    """
+    3-레벨 멀티인덱스 버전
+    index (상위, 중위, 하위):
+      ('',  '',   '공정성')  # CHQ-공정성
+      ('',  '',   '소재성')  # CHQ-소재성
+      ('',  'CHQ','')        # CHQ 합계
+      ('',  ' ',  '공정성')  # CD-공정성  ← 중위 레벨을 ' ' (스페이스)로 둬 CHQ 블록과 구분
+      ('',  ' ',  '소재성')  # CD-소재성
+      ('',  'CD', '')        # CD 합계
+      ('',  '공정성','')     # 전체 공정성
+      ('',  '소재성','')     # 전체 소재성
+      ('포항','','')         # 포항 총계
+    """
+    df = data.copy()
+
+    # 형 변환/정규화
+    for c in ['연도','월','실적']:
+        df[c] = pd.to_numeric(df.get(c), errors='coerce')
+    for c in ['구분1','구분2','구분3','구분4']:
+        if c not in df.columns: df[c] = ''
+        df[c] = df[c].fillna('').astype(str)
+
+    # 대상 공장 필터
+    df = df[df['구분1'].str.contains(plant_name)]
+    prev_year = year - 1
+    mlist = list(months_window)
+
+    # 안전 합/평균
+    safe_sum  = lambda s: float(np.nansum(s))  if len(s) else 0.0
+    safe_mean = lambda s: float(np.nanmean(s)) if len(s) else 0.0
+
+    # 집계 헬퍼
+    def pick(g2=None, g3=None, yy=None, mm=None, only_target=False):
+        q = df.copy()
+        if only_target:
+            q = q[q['구분4'] == '목표']  # 목표가 이렇게 오면 사용
+        if g2 is not None: q = q[q['구분2'] == g2]
+        if g3 is not None: q = q[q['구분3'] == g3]
+        if yy is not None: q = q[q['연도'] == yy]
+        if mm is not None: q = q[q['월'] == mm]
+        return safe_sum(q['실적'])
+
+    # ===== 인덱스/컬럼 정의 =====
+    rows = [
+        ('','',  '공정성'),  ('','',  '소재성'),  ('','CHQ',''),
+        ('',' ', '공정성'),  ('',' ', '소재성'),  ('','CD',''),
+        ('','공정성',''),   ('','소재성',''),    ('포항','','')
+    ]
+    index = pd.MultiIndex.from_tuples(rows, names=['상','중','하'])
+    
+
+    month_cols = [f"{m}월" for m in mlist]
+    col_prev_avg = f"{str(prev_year)[-2:]}년 월평균"
+    col_target   = f"{str(year)[-2:]}년 목표"
+    cols = [col_prev_avg, col_target] + month_cols + ['합계','월평균']
+
+    out = pd.DataFrame(0.0, index=index, columns=cols)
+
+    # ---------- ① 전년 월평균 ----------
+    # CHQ
+    chq_prev_ps = [pick(g2='CHQ', g3='공정성', yy=prev_year, mm=m) for m in range(1,13)]
+    chq_prev_ms = [pick(g2='CHQ', g3='소재성', yy=prev_year, mm=m) for m in range(1,13)]
+    out.loc[('', '', '공정성'), col_prev_avg] = safe_mean(chq_prev_ps)
+    out.loc[('', '', '소재성'), col_prev_avg] = safe_mean(chq_prev_ms)
+    out.loc[('', 'CHQ', ''),   col_prev_avg] = safe_mean([a+b for a,b in zip(chq_prev_ps, chq_prev_ms)])
+
+    # CD  (중위 레벨 ' ' 블록)
+    cd_prev_ps = [pick(g2='CD', g3='공정성', yy=prev_year, mm=m) for m in range(1,13)]
+    cd_prev_ms = [pick(g2='CD', g3='소재성', yy=prev_year, mm=m) for m in range(1,13)]
+    out.loc[('', ' ', '공정성'), col_prev_avg] = safe_mean(cd_prev_ps)
+    out.loc[('', ' ', '소재성'), col_prev_avg] = safe_mean(cd_prev_ms)
+    out.loc[('', 'CD', ''),      col_prev_avg] = safe_mean([a+b for a,b in zip(cd_prev_ps, cd_prev_ms)])
+
+    # 전체/포항
+    ps_all_prev = [pick(g3='공정성', yy=prev_year, mm=m) for m in range(1,13)]
+    ms_all_prev = [pick(g3='소재성', yy=prev_year, mm=m) for m in range(1,13)]
+    out.loc[('', '공정성', ''), col_prev_avg] = safe_mean(ps_all_prev)
+    out.loc[('', '소재성', ''), col_prev_avg] = safe_mean(ms_all_prev)
+    out.loc[('포항', '', ''),    col_prev_avg] = safe_mean([ps_all_prev[i]+ms_all_prev[i] for i in range(12)])
+
+    # ---------- ② 당년 목표 (없으면 0) ----------
+    out.loc[:, col_target] = 0.0
+    # 필요하면 예: out.loc[('', '', '공정성'), col_target] = pick(g2='CHQ', g3='공정성', only_target=True)
+
+    # ---------- ③ 선택월/합계/월평균 ----------
+    # CHQ
+    chq_ps = [pick(g2='CHQ', g3='공정성', yy=year, mm=m) for m in mlist]
+    chq_ms = [pick(g2='CHQ', g3='소재성', yy=year, mm=m) for m in mlist]
+    out.loc[('', '', '공정성'), month_cols] = chq_ps
+    out.loc[('', '', '공정성'), ['합계','월평균']] = [safe_sum(chq_ps), safe_mean(chq_ps)]
+    out.loc[('', '', '소재성'), month_cols] = chq_ms
+    out.loc[('', '', '소재성'), ['합계','월평균']] = [safe_sum(chq_ms), safe_mean(chq_ms)]
+    out.loc[('', 'CHQ',''), month_cols] = [chq_ps[i]+chq_ms[i] for i in range(len(mlist))]
+    out.loc[('', 'CHQ',''), ['합계','월평균']] = [
+        safe_sum(out.loc[('', 'CHQ',''), month_cols]),
+        safe_mean(out.loc[('', 'CHQ',''), month_cols]),
+    ]
+
+    # CD
+    cd_ps = [pick(g2='CD', g3='공정성', yy=year, mm=m) for m in mlist]
+    cd_ms = [pick(g2='CD', g3='소재성', yy=year, mm=m) for m in mlist]
+    out.loc[('', ' ', '공정성'), month_cols] = cd_ps
+    out.loc[('', ' ', '공정성'), ['합계','월평균']] = [safe_sum(cd_ps), safe_mean(cd_ps)]
+    out.loc[('', ' ', '소재성'), month_cols] = cd_ms
+    out.loc[('', ' ', '소재성'), ['합계','월평균']] = [safe_sum(cd_ms), safe_mean(cd_ms)]
+    out.loc[('', 'CD',''), month_cols] = [cd_ps[i]+cd_ms[i] for i in range(len(mlist))]
+    out.loc[('', 'CD',''), ['합계','월평균']] = [
+        safe_sum(out.loc[('', 'CD',''), month_cols]),
+        safe_mean(out.loc[('', 'CD',''), month_cols]),
+    ]
+
+    # 전체 공정성/소재성 + 포항 총계
+    ps_all = [pick(g3='공정성', yy=year, mm=m) for m in mlist]
+    ms_all = [pick(g3='소재성', yy=year, mm=m) for m in mlist]
+    out.loc[('', '공정성',''), month_cols] = ps_all
+    out.loc[('', '공정성',''), ['합계','월평균']] = [safe_sum(ps_all), safe_mean(ps_all)]
+    out.loc[('', '소재성',''), month_cols] = ms_all
+    out.loc[('', '소재성',''), ['합계','월평균']] = [safe_sum(ms_all), safe_mean(ms_all)]
+    total = [ps_all[i] + ms_all[i] for i in range(len(mlist))]
+    out.loc[('포항','',''), month_cols] = total
+    out.loc[('포항','',''), ['합계','월평균']] = [safe_sum(total), safe_mean(total)]
+
+    # 반올림
+    return out.round(0)
+
 # ---------------------------------------------
 # 표시 포맷(렌더용)
 # ---------------------------------------------
@@ -546,7 +700,3 @@ def format_total_production_table_for_display(df: pd.DataFrame) -> pd.DataFrame:
         else:              df[c] = df[c].apply(fmt_int)
 
     return df.reset_index()
-
-
-
-
