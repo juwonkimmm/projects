@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 import streamlit as st
-# from typing import List, Tuple  # (파이썬 3.8/3.9 호환용 필요 시 주석 해제)
+
 
 this_year = datetime.today().year
 current_month = datetime.today().month
@@ -672,6 +672,159 @@ def create_defect_summary_pohang(year:int,
 
     # 반올림
     return out.round(0)
+
+
+
+def create_defect_summary_chungju(
+    year:int,
+    month:int,
+    data:pd.DataFrame,
+    months_window:tuple,
+    plant1_name:str="충주",      # 충주1공장
+    plant2_name:str="충주2"      # 충주2공장 (CD만)
+) -> pd.DataFrame:
+    """
+    행(9행, 계단 구조):
+      0 ('',   '',  '공정성')      ┐  충주1 CHQ
+      1 ('',   '',  '소재성')      ┘
+      2 ('',  '충주1공장(CHQ)', '')  ← 충주1 합계(라벨행)
+
+      3 ('',   '',  '공정성')      ┐  충주2 CD(마봉강)만 표기
+      4 ('',   '',  '소재성')      ┘
+      5 ('',   '충주2공장',      '')  ← 충주2 합계(라벨행)
+
+      6 ('공정성','',  '')          전체 공정성
+      7 ('소재성','',  '')          전체 소재성
+      8 ('충주','',    '')          충주 총계
+    """
+    df = data.copy()
+
+    # 숫자/문자 정리
+    for c in ['연도','월','실적']:
+        df[c] = pd.to_numeric(df.get(c), errors='coerce')
+    for c in ['구분1','구분2','구분3','구분4']:
+        if c not in df.columns: df[c] = ''
+        df[c] = df[c].fillna('').astype(str)
+
+    prev_year = year - 1
+    mlist = list(months_window)
+
+    # 안전 합/평균
+    safe_sum  = lambda s: float(np.nansum(s))  if len(s) else 0.0
+    safe_mean = lambda s: float(np.nanmean(s)) if len(s) else 0.0
+
+    # 필터/집계
+    def pick(plant=None, g2=None, cause=None, yy=None, mm=None, only_target=False):
+        q = df.copy()
+        if plant is not None:
+            q = q[q['구분1'].str.contains(plant)]
+        if only_target:
+            q = q[q['구분4'] == '목표']
+        if g2 is not None:
+            q = q[q['구분2'] == g2]
+        if cause is not None:
+            q = q[q['구분3'] == cause]
+        if yy is not None:
+            q = q[q['연도'] == yy]
+        if mm is not None:
+            q = q[q['월'] == mm]
+        return safe_sum(q['실적'])
+
+    # ── 인덱스(9행) ──
+    rows = [
+        ('',   '',  '공정성'),
+        ('',   '',  '소재성'),
+        ('',  '충주1공장(CHQ)', ''),
+        ('',   '',  '공정성'),
+        ('',   '',  '소재성'),
+        ('',   '충주2공장',      ''),
+        ('','공정성',  ''),
+        ('','소재성',  ''),
+        ('충주','',    ''),
+    ]
+    index = pd.MultiIndex.from_tuples(rows, names=['상','중','하'])
+
+    month_cols   = [f"{m}월" for m in mlist]
+    col_prev_avg = f"{str(prev_year)[-2:]}년 월평균"
+    col_target   = f"{str(year)[-2:]}년 목표"
+    cols         = [col_prev_avg, col_target] + month_cols + ['합계','월평균']
+
+    out = pd.DataFrame(0.0, index=index, columns=cols)
+
+    # ---------- 전년 월평균 ----------
+    # 충주1 CHQ (0,1,2)
+    cj1_prev_ps = [pick(plant=plant1_name, g2='CHQ', cause='공정성', yy=prev_year, mm=m) for m in range(1,13)]
+    cj1_prev_ms = [pick(plant=plant1_name, g2='CHQ', cause='소재성', yy=prev_year, mm=m) for m in range(1,13)]
+    out.iloc[0, out.columns.get_loc(col_prev_avg)] = safe_mean(cj1_prev_ps)
+    out.iloc[1, out.columns.get_loc(col_prev_avg)] = safe_mean(cj1_prev_ms)
+    out.iloc[2, out.columns.get_loc(col_prev_avg)] = safe_mean([a+b for a,b in zip(cj1_prev_ps, cj1_prev_ms)])
+
+    # 충주2 CD (3,4,5)
+    cj2_prev_ps_cd = [pick(plant=plant2_name, g2='마봉강', cause='공정성', yy=prev_year, mm=m) for m in range(1,13)]
+    cj2_prev_ms_cd = [pick(plant=plant2_name, g2='마봉강', cause='소재성', yy=prev_year, mm=m) for m in range(1,13)]
+    out.iloc[3, out.columns.get_loc(col_prev_avg)] = safe_mean(cj2_prev_ps_cd)
+    out.iloc[4, out.columns.get_loc(col_prev_avg)] = safe_mean(cj2_prev_ms_cd)
+    out.iloc[5, out.columns.get_loc(col_prev_avg)] = safe_mean([a+b for a,b in zip(cj2_prev_ps_cd, cj2_prev_ms_cd)])
+
+    # 전체 공정성/소재성/충주 총계 (6~8)
+    chungju_mask = df['구분1'].str.contains(plant1_name) | df['구분1'].str.contains(plant2_name)
+    def pick_chungju_total(yy, mm):
+        q = df[(df['연도']==yy)&(df['월']==mm)&chungju_mask]
+        return safe_sum(q['실적'])
+
+    all_prev_ps = [pick(plant=None, g2=None, cause='공정성', yy=prev_year, mm=m) for m in range(1,13)]
+    all_prev_ms = [pick(plant=None, g2=None, cause='소재성', yy=prev_year, mm=m) for m in range(1,13)]
+    chungju_prev = [pick_chungju_total(prev_year, m) for m in range(1,13)]
+
+    out.iloc[6, out.columns.get_loc(col_prev_avg)] = safe_mean(all_prev_ps)
+    out.iloc[7, out.columns.get_loc(col_prev_avg)] = safe_mean(all_prev_ms)
+    out.iloc[8, out.columns.get_loc(col_prev_avg)] = safe_mean(chungju_prev)
+
+    # ---------- 목표(없으면 0) ----------
+    out.loc[:, col_target] = 0.0
+
+    # ---------- 당해 선택월 ----------
+    # 충주1 CHQ (0~2)
+    cj1_ps = [pick(plant=plant1_name, g2='CHQ', cause='공정성', yy=year, mm=m) for m in mlist]
+    cj1_ms = [pick(plant=plant1_name, g2='CHQ', cause='소재성', yy=year, mm=m) for m in mlist]
+    out.iloc[0, out.columns.get_indexer(month_cols)] = cj1_ps
+    out.iloc[1, out.columns.get_indexer(month_cols)] = cj1_ms
+    out.iloc[2, out.columns.get_indexer(month_cols)] = [cj1_ps[i]+cj1_ms[i] for i in range(len(mlist))]
+    out.iloc[0, out.columns.get_indexer(['합계','월평균'])] = [safe_sum(cj1_ps), safe_mean(cj1_ps)]
+    out.iloc[1, out.columns.get_indexer(['합계','월평균'])] = [safe_sum(cj1_ms), safe_mean(cj1_ms)]
+    out.iloc[2, out.columns.get_indexer(['합계','월평균'])] = [
+        safe_sum(out.iloc[2, out.columns.get_indexer(month_cols)]),
+        safe_mean(out.iloc[2, out.columns.get_indexer(month_cols)]),
+    ]
+
+    # 충주2 CD (3~5)
+    cj2_ps_cd = [pick(plant=plant2_name, g2='마봉강', cause='공정성', yy=year, mm=m) for m in mlist]
+    cj2_ms_cd = [pick(plant=plant2_name, g2='마봉강', cause='소재성', yy=year, mm=m) for m in mlist]
+    out.iloc[3, out.columns.get_indexer(month_cols)] = cj2_ps_cd
+    out.iloc[4, out.columns.get_indexer(month_cols)] = cj2_ms_cd
+    out.iloc[5, out.columns.get_indexer(month_cols)] = [cj2_ps_cd[i]+cj2_ms_cd[i] for i in range(len(mlist))]
+    out.iloc[3, out.columns.get_indexer(['합계','월평균'])] = [safe_sum(cj2_ps_cd), safe_mean(cj2_ps_cd)]
+    out.iloc[4, out.columns.get_indexer(['합계','월평균'])] = [safe_sum(cj2_ms_cd), safe_mean(cj2_ms_cd)]
+    out.iloc[5, out.columns.get_indexer(['합계','월평균'])] = [
+        safe_sum(out.iloc[5, out.columns.get_indexer(month_cols)]),
+        safe_mean(out.iloc[5, out.columns.get_indexer(month_cols)]),
+    ]
+
+    # 전체 공정성/소재성/충주 총계 (6~8)
+    ps_all = [pick(plant=None, g2=None, cause='공정성', yy=year, mm=m) for m in mlist]
+    ms_all = [pick(plant=None, g2=None, cause='소재성', yy=year, mm=m) for m in mlist]
+    chungju_total = [pick_chungju_total(year, m) for m in mlist]
+
+    out.iloc[6, out.columns.get_indexer(month_cols)] = ps_all
+    out.iloc[7, out.columns.get_indexer(month_cols)] = ms_all
+    out.iloc[8, out.columns.get_indexer(month_cols)] = chungju_total
+
+    for ridx in [6, 7, 8]:
+        vals = out.iloc[ridx, out.columns.get_indexer(month_cols)].to_list()
+        out.iloc[ridx, out.columns.get_indexer(['합계','월평균'])] = [safe_sum(vals), safe_mean(vals)]
+
+    return out.round(0)
+
 
 # ---------------------------------------------
 # 표시 포맷(렌더용)

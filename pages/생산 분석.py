@@ -143,7 +143,7 @@ def load_defect(url: str) -> pd.DataFrame:
 year = int(st.session_state['year'])
 month = int(st.session_state['month'])
 
-st.image("logo.gif", width=200)
+st.image("D:\\seah\\pages\\logo.gif", width=200)
 st.markdown(f"## {year}년 {month}월 생산 분석")
 t1, t2, t3 = st.tabs(['전체 생산실적', '부적합 발생내역_포항공장','부적합 발생내역_충주 1,2공장'])
 st.divider()
@@ -226,7 +226,7 @@ with t1:
 
 
 with t2:
-    st.markdown("<h4>부적합 발생내역 (포항)</h4>", unsafe_allow_html=True)
+    st.markdown("<h4>2) 부적합 발생내역 (포항)</h4>", unsafe_allow_html=True)
     try:
         df_src = load_defect(st.secrets['sheets']['f_41_42'])
 
@@ -235,7 +235,7 @@ with t2:
             year, month, df_src, months_window=tuple(range(1, month+1)), plant_name="포항"
         )
 
-        # ✅ 인덱스 머리글: [빈칸, 빈칸, 구분] 처럼 보이게
+        # 인덱스 머리글: 구분
         if isinstance(df_pohang.index, pd.MultiIndex):
             n = df_pohang.index.nlevels
             if n == 3:
@@ -268,8 +268,45 @@ with t2:
 # 부적합 발생내역 - 충주 1,2공장 (자리만)
 # =========================
 with t3:
-    st.markdown("<h4>부적합 발생내역 (충주 1,2공장)</h4>", unsafe_allow_html=True)
-    st.info("충주 1,2공장 표는 추후 데이터/로직 연결 예정입니다.")
+    st.markdown("<h4>3) 부적합 발생내역 (충주 1,2공장)</h4>", unsafe_allow_html=True)
+    try:
+        df_src = load_defect(st.secrets['sheets']['f_41_42'])
+
+        # 1월~선택월 전체를 컬럼으로
+        all_months = tuple(range(1, month + 1))
+        df_cjj = modules.create_defect_summary_chungju(
+            year, month, df_src, months_window=all_months,
+            plant1_name="충주", plant2_name="충주2"
+        )
+
+                # 인덱스 머리글: 구분
+        if isinstance(df_cjj.index, pd.MultiIndex):
+            n = df_cjj.index.nlevels
+            if n == 3:
+                df_cjj.index = df_cjj.index.set_names(['구분','\u2007', '\u2009' ])
+            elif n == 2:
+                df_cjj.index = df_cjj.index.set_names(['\u2007', '구분'])
+            else:
+                df_cjj.index = df_cjj.index.set_names(['구분'])
+
+        thick_rows_zero_based = [2, 5]
+        styles_def = []
+        styles_def.extend([
+            {'selector': f'tbody tr:nth-child({r+1})',
+             'props': [('border-bottom', '3px solid grey !important')]}
+            for r in thick_rows_zero_based
+        ])
+        styles_def.append({'selector': 'thead tr:last-child th',
+                           'props': [('border-bottom', '3px solid grey')]})
+
+        # 강조 컬럼
+        hl_cols = [f"{str(year-1)[-2:]}년 월평균", f"{str(year)[-2:]}년 목표", '합계', '월평균']
+
+        display_styled_df(df_cjj, styles=styles_def, highlight_cols=hl_cols)
+
+    except Exception as e:
+        st.error(f"충주 1,2공장 부적합 표 생성 중 오류가 발생했습니다: {e}")
+
 
 # =========================
 # Footer
