@@ -229,7 +229,7 @@ thead {
 
 #------------------------------------------------------------------------------------------------
 st.markdown('<div class="centered">', unsafe_allow_html=True)
-st.image("D:\seah\pages\logo.gif", width=200)
+st.image("logo.gif", width=200)
 st.markdown(f"## {this_year}년 {current_month}월 손익 분석", unsafe_allow_html=True)
 #st.divider()
 
