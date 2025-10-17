@@ -7,16 +7,18 @@ import plotly.graph_objects as go
 import modules
 import matplotlib.pyplot as plt
 import numpy as np
-import matplotlib as mpl
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 
-# Streamlit Cloud 서버 환경에 폰트 설정
-mpl.rc('font', family='NanumGothic')
-# 마이너스 부호 깨짐 방지
-mpl.rcParams['axes.unicode_minus'] = False
+# Streamlit Cloud에 설치된 NanumGothic 폰트 경로 직접 지정
+font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
 
-warnings.filterwarnings('ignore')
-st.set_page_config(layout="wide", initial_sidebar_state="expanded")
+# 폰트 프로퍼티 설정
+font_prop = fm.FontProperties(fname=font_path)
+
+# Matplotlib의 전역 폰트 설정 변경
+plt.rc('font', family=font_prop.get_name())
+plt.rcParams['axes.unicode_minus'] = False
 
 @st.cache_data(ttl=1800)
 def load_data(url):
