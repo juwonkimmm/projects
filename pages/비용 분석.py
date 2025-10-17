@@ -8,6 +8,12 @@ import modules
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib as mpl
+import matplotlib.pyplot as plt
+
+# Streamlit Cloud 서버 환경에 폰트 설정
+mpl.rc('font', family='NanumGothic')
+# 마이너스 부호 깨짐 방지
+mpl.rcParams['axes.unicode_minus'] = False
 
 warnings.filterwarnings('ignore')
 st.set_page_config(layout="wide", initial_sidebar_state="expanded")
