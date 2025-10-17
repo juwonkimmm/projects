@@ -194,7 +194,7 @@ with t1:
 
 
     try:
-        mpl.rcParams['font.family'] = 'Malgun Gothic'  # Windows 한글
+        mpl.rcParams['font.family'] = 'NanumGothic'  # Windows 한글
         mpl.rcParams['axes.unicode_minus'] = False
     except Exception:
         pass
@@ -339,7 +339,7 @@ with t2:
 
 
     try:
-        mpl.rcParams['font.family'] = 'Malgun Gothic'  # Windows 한글
+        mpl.rcParams['font.family'] = 'NanumGothic'  # Windows 한글
         mpl.rcParams['axes.unicode_minus'] = False
     except Exception:
         pass
@@ -481,7 +481,7 @@ with t3:
 
 
     try:
-        mpl.rcParams['font.family'] = 'Malgun Gothic'  # Windows 한글
+        mpl.rcParams['font.family'] = 'NanumGothic'  # Windows 한글
         mpl.rcParams['axes.unicode_minus'] = False
     except Exception:
         pass
@@ -610,7 +610,7 @@ with t4:
 
     # ===== 그래프=====
     try:
-        mpl.rcParams['font.family'] = 'Malgun Gothic'
+        mpl.rcParams['font.family'] = 'NanumGothic'
         mpl.rcParams['axes.unicode_minus'] = False
     except Exception:
         pass
