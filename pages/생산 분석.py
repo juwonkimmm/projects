@@ -567,7 +567,7 @@ def load_defect(url: str) -> pd.DataFrame:
 year = int(st.session_state['year'])
 month = int(st.session_state['month'])
 
-st.image("logo.gif", width=200)
+st.image("D:\seah\pages\logo.gif", width=200)
 st.markdown(f"## {year}년 {month}월 생산 분석")
 t1, t2, t3 = st.tabs(['전체 생산실적', '부적합 발생내역_포항공장', '부적합 발생내역_충주 1,2공장'])
 st.divider()
@@ -624,13 +624,227 @@ with t1:
                 border_rows.append(i)
 
         styles_prod = []
-        styles_prod.extend([
-            {'selector': f'tbody tr:nth-child({r})', 'props': [('border-bottom', '3px solid grey !important')]}
-            for r in border_rows
-        ])
-        styles_prod.append({'selector': 'thead tr:last-child th', 'props': [('border-bottom', '3px solid grey')]})
-        styles_prod.append({'selector': 'th.row_heading', 'props': [('border-right', '2px solid #ddd'),
-                                                                    ('background-color', '#fff')]})
+
+    
+
+        # 1행 2열(첫 번째 데이터 행의 두 번째 셀)
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(1) td:nth-child(2)',
+
+            'props': [('border-left', '3px solid grey !important')]
+        })
+
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(1) td:nth-child(2)',
+
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(2) td:nth-child(2)',
+
+            'props': [('border-left', '3px solid grey !important')]
+        })
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(2) td:nth-child(2)',
+
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(3) td:nth-child(2)',
+
+            'props': [('border-left', '2px solid white !important')]
+        })
+
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(3) td:nth-child(1)',
+
+            'props': [('border-top', '3px solid grey !important')]
+        })
+
+
+        ######cd
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(4) td:nth-child(2)',
+
+            'props': [('border-left', '3px solid grey !important')]
+        })
+
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(4) td:nth-child(2)',
+
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(5) td:nth-child(2)',
+
+            'props': [('border-left', '3px solid grey !important')]
+        })
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(5) td:nth-child(2)',
+
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(6) td:nth-child(2)',
+
+            'props': [('border-left', '2px solid white !important')]
+        })
+
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(6) td:nth-child(1)',
+
+            'props': [('border-top', '3px solid grey !important')]
+        })
+
+
+        ###sts
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(7) td:nth-child(2)',
+
+            'props': [('border-left', '3px solid grey !important')]
+        })
+
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(7) td:nth-child(2)',
+
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(8) td:nth-child(2)',
+
+            'props': [('border-left', '3px solid grey !important')]
+        })
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(8) td:nth-child(2)',
+
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(9) td:nth-child(2)',
+
+            'props': [('border-left', '2px solid white !important')]
+        })
+
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(9) td:nth-child(1)',
+
+            'props': [('border-top', '3px solid grey !important')]
+        })
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(10) td:nth-child(2)',
+
+            'props': [('border-left', '2px solid white !important')]
+        })
+
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(11) td:nth-child(2)',
+
+            'props': [('border-left', '2px solid white !important')]
+        })
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(12) td:nth-child(2)',
+
+            'props': [('border-left', '2px solid white !important')]
+        })
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(13) td:nth-child(2)',
+
+            'props': [('border-left', '2px solid white !important')]
+        })
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(14) td:nth-child(2)',
+
+            'props': [('border-left', '2px solid white !important')]
+        })
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(15) td:nth-child(2)',
+
+            'props': [('border-left', '2px solid white !important')]
+        })
+
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(1) td:nth-child(1)',
+
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(4) td:nth-child(1)',
+
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(7) td:nth-child(1)',
+
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(7) td:nth-child(1)',
+
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(3)',
+
+            'props': [('border-bottom', '3px solid gray !important')]
+        })
+        
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(6)',
+
+            'props': [('border-bottom', '3px solid gray !important')]
+        })
+
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(9)',
+
+            'props': [('border-bottom', '3px solid gray !important')]
+        })
+
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(10)',
+
+            'props': [('border-bottom', '3px solid gray !important')]
+        })
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(11)',
+
+            'props': [('border-bottom', '3px solid gray !important')]
+        })
+
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(12)',
+
+            'props': [('border-bottom', '3px solid gray !important')]
+        })
+
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(13)',
+
+            'props': [('border-bottom', '3px solid gray !important')]
+        })
+
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(14)',
+
+            'props': [('border-bottom', '3px solid gray !important')]
+        })
+
+        styles_prod.append({
+            'selector': 'tbody tr:nth-child(15)',
+
+            'props': [('border-bottom', '3px solid gray !important')]
+        })
+
+        styles_prod.append({
+            'selector': 'thead tr:last-child th:nth-child(1)',  # 마지막 헤더 행의 1열(= 구분)
+            'props': [('border-right', '2px solid white !important')]
+        })
+
+        
 
         highlight_cols = [f"'{str(year - 1)[-2:]}년 월평균", f"'{str(year)[-2:]}년 월평균", "전월대비", "%"]
 
@@ -675,7 +889,7 @@ with t2:
         # 가짜 헤더가 tbody 1행을 차지하므로 nth-child는 +1 보정 → (r + 2)
         thick_rows_data_zero_based = [2, 5, 8]
         styles_def = []
-
+        
         # thead 숨김 + 첫 행을 진짜 헤더처럼
         styles_def.append({'selector': 'thead', 'props': [('display', 'none')]})
         styles_def.append({
@@ -684,7 +898,187 @@ with t2:
                       ('background', '#ffffff'),
                       ]
         })
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level1.row1, '  #  CHQ 라벨 행
+                'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                'th.row_heading.level2.row1, '   # 빈칸
+                'th.row_heading.level2.row2, '   # 공정성
+                'th.row_heading.level2.row3'     # 소재성
+            ),
+            'props': [('border-bottom', '2px solid white !important')]
+        })
 
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level1.row1, '  #  CHQ 라벨 행
+                'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                'th.row_heading.level2.row1, '   # 빈칸
+                'th.row_heading.level2.row2, '   # 공정성
+                'th.row_heading.level2.row3'     # 소재성
+            ),
+            'props': [('border-left', '2px solid white !important')]
+        })
+
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level1.row3, '  # CD 라벨 행
+                'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                'th.row_heading.level2.row4, '   # 빈칸
+                'th.row_heading.level2.row5, '   # 공정성
+                'th.row_heading.level2.row6'     # 소재성
+            ),
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+
+        styles_def.append({
+            'selector': (
+                # 'th.row_heading.level1.row3, '  # CD 라벨 행
+                'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                'th.row_heading.level2.row4, '   # 빈칸
+                'th.row_heading.level2.row5, '   # 공정성
+                'th.row_heading.level2.row6'     # 소재성
+            ),
+            'props': [('border-left', '2px solid white !important')]
+        })
+
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level1.row6, '  # CD 라벨 행
+                'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                'th.row_heading.level2.row7, '   # 빈칸
+                'th.row_heading.level2.row8, '   # 공정성
+                'th.row_heading.level2.row9'     # 소재성
+            ),
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level1.row6, '  # CD 라벨 행
+                'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                'th.row_heading.level2.row7, '   # 빈칸
+                'th.row_heading.level2.row8, '   # 공정성
+                'th.row_heading.level2.row9'     # 소재성
+            ),
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level0.row0, '  # CD 라벨 행
+                'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                'th.row_heading.level1.row7, '   # 빈칸
+                'th.row_heading.level1.row8, '   # 공정성
+                  # 소재성
+            ),
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level0.row0, '  # CD 라벨 행
+                'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                'th.row_heading.level1.row0, '   # 빈칸
+                
+                'th.row_heading.level1.row4, '
+                
+            ),
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+
+        
+        ##
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level2.row6, '  # CD 라벨 행
+                # 'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                 'th.row_heading.level2.row7, '   # 빈칸
+                 'th.row_heading.level2.row8, '   # 공정성
+                # 'th.row_heading.level2.row9'     # 소재성
+            ),
+            'props': [('border-left', '2px solid white !important')]
+        })
+        ##
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level1.row7, '  # CD 라벨 행
+                # 'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                 'th.row_heading.level1.row8, '   # 빈칸
+                 'th.row_heading.level1.row9, '   # 공정성
+                # 'th.row_heading.level2.row9'     # 소재성
+            ),
+            'props': [('border-left', '2px solid white !important')]
+        })
+        
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level1.row7, '  # CD 라벨 행
+                # 'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                'th.row_heading.level1.row0, '
+                 'th.row_heading.level1.row1, '   # 빈칸
+                 'th.row_heading.level1.row2, '   # 공정성
+                 'th.row_heading.level1.row3, '
+                 'th.row_heading.level1.row4, '
+                 'th.row_heading.level1.row5, '
+                 'th.row_heading.level1.row6, '
+                 'th.row_heading.level1.row7, '
+                # 'th.row_heading.level2.row9'     # 소재성
+            ),
+            'props': [("border-left", "3px solid grey")]
+        })
+
+
+
+        styles_def.append({
+            "selector": "th.row_heading.level0.row1",  # level1의 row1(0-기반) 한 칸만
+            "props": [("border-right", '2px solid white !important')]
+        })
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level0.row1, '  # CD 라벨 행
+                # 'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                # 'th.row_heading.level1.row1, '   # 빈칸
+                'th.row_heading.level1.row3, '
+                'th.row_heading.level1.row6, '   # 공정성
+                'th.row_heading.level1.row9'     # 소재성
+                
+            ),
+            'props': [('border-right', '2px solid white !important')]
+        })
+
+        styles_def.append({
+            "selector": "th.row_heading.level0",          # level0 인덱스 전체
+            "props": [("border-left", "3px solid grey")]  # 왼쪽 굵은 선
+        })
+        
+
+        # 빈 인덱스(th.blank) 회색 배경 제거
+        styles_def.append({'selector': 'th.blank', 'props': [('background-color', '#fff !important')]})
+        styles_def.append({'selector': 'th.row_heading.blank', 'props': [('background-color', '#fff !important')]})
+
+        # 굵은 가로 경계선(데이터 구간, +1 보정)
+        styles_def.extend([
+            {'selector': f'tbody tr:nth-child({r + 2})',
+             'props': [('border-bottom', '3px solid #666 !important')]}
+            for r in thick_rows_data_zero_based
+        ])
+        # 강조 컬럼
+        hl_cols = [f"{str(year - 1)[-2:]}년 월평균", f"{str(year)[-2:]}년 목표", '합계', '월평균']
+
+        # 렌더 (정수 포맷, 소수점 없음)
+        display_styled_df_keep_index(
+            df_inline,
+            styles=styles_def,
+            highlight_cols=hl_cols,
+            fmt_int=True
+        )
+
+    except Exception as e:
+        st.error(f"충주 1,2공장 부적합 표 생성 중 오류가 발생했습니다: {e}")
+
+
+        
+               
+        
         # 굵은 가로 경계선(데이터 구간, +1 보정)
         styles_def.extend([
             {'selector': f'tbody tr:nth-child({r + 2})',
@@ -753,6 +1147,158 @@ with t3:
             'props': [('font-weight', '700'),
                       ('background', '#ffffff')]
         })
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level1.row1, '  #  CHQ 라벨 행
+                'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                'th.row_heading.level2.row1, '   # 빈칸
+                'th.row_heading.level2.row2, '   # 공정성
+                'th.row_heading.level2.row3'     # 소재성
+            ),
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level1.row1, '  #  CHQ 라벨 행
+                'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                'th.row_heading.level2.row1, '   # 빈칸
+                'th.row_heading.level2.row2, '   # 공정성
+                'th.row_heading.level2.row3'     # 소재성
+            ),
+            'props': [('border-left', '2px solid white !important')]
+        })
+
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level1.row3, '  # CD 라벨 행
+                'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                'th.row_heading.level2.row4, '   # 빈칸
+                'th.row_heading.level2.row5, '   # 공정성
+                'th.row_heading.level2.row6'     # 소재성
+            ),
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+
+        styles_def.append({
+            'selector': (
+                # 'th.row_heading.level1.row3, '  # CD 라벨 행
+                'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                'th.row_heading.level2.row4, '   # 빈칸
+                'th.row_heading.level2.row5, '   # 공정성
+                'th.row_heading.level2.row6'     # 소재성
+            ),
+            'props': [('border-left', '2px solid white !important')]
+        })
+
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level1.row6, '  # CD 라벨 행
+                'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                'th.row_heading.level2.row7, '   # 빈칸
+                'th.row_heading.level2.row8, '   # 공정성
+                'th.row_heading.level2.row9'     # 소재성
+            ),
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level1.row6, '  # CD 라벨 행
+                'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                'th.row_heading.level2.row7, '   # 빈칸
+                'th.row_heading.level2.row8, '   # 공정성
+                'th.row_heading.level2.row9'     # 소재성
+            ),
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level0.row0, '  # CD 라벨 행
+                'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                'th.row_heading.level1.row7, '   # 빈칸
+                'th.row_heading.level1.row8, '   # 공정성
+                  # 소재성
+            ),
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level0.row0, '  # CD 라벨 행
+                'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                'th.row_heading.level1.row0, '   # 빈칸
+                
+                'th.row_heading.level1.row4, '
+                
+            ),
+            'props': [('border-bottom', '2px solid white !important')]
+        })
+
+        
+        ##
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level2.row6, '  # CD 라벨 행
+                # 'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                 'th.row_heading.level2.row7, '   # 빈칸
+                 'th.row_heading.level2.row8, '   # 공정성
+                # 'th.row_heading.level2.row9'     # 소재성
+            ),
+            'props': [('border-left', '2px solid white !important')]
+        })
+        ##
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level1.row7, '  # CD 라벨 행
+                # 'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                 'th.row_heading.level1.row8, '   # 빈칸
+                 'th.row_heading.level1.row9, '   # 공정성
+                # 'th.row_heading.level2.row9'     # 소재성
+            ),
+            'props': [('border-left', '2px solid white !important')]
+        })
+        
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level1.row7, '  # CD 라벨 행
+                # 'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                'th.row_heading.level1.row0, '
+                 'th.row_heading.level1.row1, '   # 빈칸
+                 'th.row_heading.level1.row2, '   # 공정성
+                 'th.row_heading.level1.row3, '
+                 'th.row_heading.level1.row4, '
+                 'th.row_heading.level1.row5, '
+                 'th.row_heading.level1.row6, '
+                 'th.row_heading.level1.row7, '
+                # 'th.row_heading.level2.row9'     # 소재성
+            ),
+            'props': [("border-left", "3px solid grey")]
+        })
+
+
+
+        styles_def.append({
+            "selector": "th.row_heading.level0.row1",  # level1의 row1(0-기반) 한 칸만
+            "props": [("border-right", '2px solid white !important')]
+        })
+        styles_def.append({
+            'selector': (
+                'th.row_heading.level0.row1, '  # CD 라벨 행
+                # 'th.blank.level0, '              # 좌측 공백 인덱스 셀
+                # 'th.row_heading.level1.row1, '   # 빈칸
+                'th.row_heading.level1.row3, '
+                'th.row_heading.level1.row6, '   # 공정성
+                'th.row_heading.level1.row9'     # 소재성
+                
+            ),
+            'props': [('border-right', '2px solid white !important')]
+        })
+
+        styles_def.append({
+            "selector": "th.row_heading.level0",          # level0 인덱스 전체
+            "props": [("border-left", "3px solid grey")]  # 왼쪽 굵은 선
+        })
+        
 
         # 빈 인덱스(th.blank) 회색 배경 제거
         styles_def.append({'selector': 'th.blank', 'props': [('background-color', '#fff !important')]})
