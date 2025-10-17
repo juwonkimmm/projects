@@ -7,18 +7,65 @@ import plotly.graph_objects as go
 import modules
 import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib as mpl
+
+# ===== Korean font setup (Matplotlib + Plotly + CSS) =====
+import os
+import matplotlib as mpl
 import matplotlib.pyplot as plt
-import matplotlib.font_manager as fm
+from matplotlib import font_manager as fm
+import plotly.io as pio
+import plotly.graph_objects as go
 
-# Streamlit Cloud에 설치된 NanumGothic 폰트 경로 직접 지정
-font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
+# 1) 리눅스 배포 환경에서 존재 가능성이 높은 경로 후보 등록
+FONT_CANDIDATES = [
+    "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+    "/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJKkr-Regular.otf",
+]
 
-# 폰트 프로퍼티 설정
-font_prop = fm.FontProperties(fname=font_path)
+for p in FONT_CANDIDATES:
+    if os.path.exists(p):
+        fm.fontManager.addfont(p)
 
-# Matplotlib의 전역 폰트 설정 변경
-plt.rc('font', family=font_prop.get_name())
-plt.rcParams['axes.unicode_minus'] = False
+# 2) Matplotlib 기본 폰트 패밀리(폴백 포함)
+mpl.rcParams["font.family"] = [
+    "NanumGothic",          # 리눅스(Cloud)
+    "Nanum Barun Gothic",
+    "Noto Sans CJK KR",
+    "Malgun Gothic",        # Windows
+    "AppleGothic",          # macOS
+    "DejaVu Sans",
+]
+mpl.rcParams["axes.unicode_minus"] = False
+
+# (선택) 폰트 캐시 강제 리로드
+try:
+    fm._load_fontmanager(try_read_cache=False)
+except Exception:
+    pass
+
+# 3) Plotly 기본 템플릿에 한글 폰트 지정(브라우저 폰트 사용)
+pio.templates["nanum"] = go.layout.Template(
+    layout=dict(font=dict(family="NanumGothic, Noto Sans CJK KR, AppleGothic, Malgun Gothic, sans-serif"))
+)
+pio.templates.default = "plotly+nanum"
+
+# 4) HTML/테이블용 웹폰트 로드 + CSS 폴백
+st.markdown("""
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+html, body, div, table, th, td {
+  font-family: 'Noto Sans KR','NanumGothic','Noto Sans CJK KR', sans-serif !important;
+}
+</style>
+""", unsafe_allow_html=True)
+# =========================================================
+
+
+warnings.filterwarnings('ignore')
+st.set_page_config(layout="wide", initial_sidebar_state="expanded")
 
 @st.cache_data(ttl=1800)
 def load_data(url):
@@ -201,11 +248,7 @@ with t1:
     st.markdown(unit, unsafe_allow_html=True)
 
 
-    try:
-        mpl.rcParams['font.family'] = 'NanumGothic'  # Windows 한글
-        mpl.rcParams['axes.unicode_minus'] = False
-    except Exception:
-        pass
+    
 
     df_plot = df_table.copy()  # index: 항목들, columns: '2월'...'N월'
     months = list(df_plot.columns)
@@ -346,11 +389,7 @@ with t2:
     st.markdown(unit, unsafe_allow_html=True)
 
 
-    try:
-        mpl.rcParams['font.family'] = 'NanumGothic'  # Windows 한글
-        mpl.rcParams['axes.unicode_minus'] = False
-    except Exception:
-        pass
+    
 
     df_plot = df_table.copy()  # index: 항목들, columns: '2월'...'N월'
     months = list(df_plot.columns)
@@ -488,11 +527,7 @@ with t3:
 
 
 
-    try:
-        mpl.rcParams['font.family'] = 'NanumGothic'  # Windows 한글
-        mpl.rcParams['axes.unicode_minus'] = False
-    except Exception:
-        pass
+    
 
     df_plot = df_table.copy()  
     months = list(df_plot.columns)
@@ -617,11 +652,7 @@ with t4:
     st.divider()
 
     # ===== 그래프=====
-    try:
-        mpl.rcParams['font.family'] = 'NanumGothic'
-        mpl.rcParams['axes.unicode_minus'] = False
-    except Exception:
-        pass
+    
 
     df_plot = df_table.copy()
     df_plot = df_plot.apply(pd.to_numeric, errors="coerce")
