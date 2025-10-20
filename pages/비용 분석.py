@@ -939,7 +939,10 @@ with t5:
             df.style
             .format(lambda x: f"{x:,.0f}" if isinstance(x, (int, float)) and pd.notnull(x) else x)
             .set_properties(**{'text-align': 'right'})
-            .set_properties(**{'font-family': 'Noto Sans KR'})
+            # .set_properties(**{'font-family': 'Noto Sans KR'})
+            .set_properties(**{
+                'font-family': "'Noto Sans KR','NanumGothic','Noto Sans CJK KR','Malgun Gothic','AppleGothic',sans-serif"
+            })
             
         )
     
