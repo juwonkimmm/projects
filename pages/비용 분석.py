@@ -768,11 +768,11 @@ with t4:
     st.divider()
 
     # ===== 그래프=====
-    try:
-        mpl.rcParams['font.family'] = 'nanum Gothic'
-        mpl.rcParams['axes.unicode_minus'] = False
-    except Exception:
-        pass
+    # try:
+    #     mpl.rcParams['font.family'] = 'Malgun Gothic'
+    #     mpl.rcParams['axes.unicode_minus'] = False
+    # except Exception:
+    #     pass
 
     df_plot = df_table.copy()
     df_plot = df_plot.apply(pd.to_numeric, errors="coerce")
