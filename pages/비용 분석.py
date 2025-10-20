@@ -652,7 +652,11 @@ with t4:
     st.divider()
 
     # ===== 그래프=====
-    
+    try:
+        mpl.rcParams['font.family'] = 'Malgun Gothic'
+        mpl.rcParams['axes.unicode_minus'] = False
+    except Exception:
+        pass
 
     df_plot = df_table.copy()
     df_plot = df_plot.apply(pd.to_numeric, errors="coerce")
@@ -660,74 +664,150 @@ with t4:
     months = list(df_plot.columns)
     x = np.arange(len(months))
 
-    fig = plt.figure(figsize=(12, 5))                      # 높이 슬림
-    gs = fig.add_gridspec(1, 2, width_ratios=[1.8, 8.2], wspace=0.02)  
+    fig = plt.figure(figsize=(12, 4))
+
+    # 기존: [1.8, 8.2]  →  왼쪽(표) 더 얇게
+    gs = fig.add_gridspec(1, 2, width_ratios=[1.0, 7.0], wspace=0.08)  
     ax_leg = fig.add_subplot(gs[0, 0])
     ax     = fig.add_subplot(gs[0, 1])
+    ax.margins(x=0.12, y=0.15)
+    
+
+
+    
+    
+    
+    
+
 
     # ----- 본 그래프 -----
-    lines, labels = [], []
+
+    # 전체 데이터(질소/전력 포함)로 원래 메인 스케일 고정
+    all_vals = df_plot.to_numpy(dtype=float)
+    finite = np.isfinite(all_vals)
+    orig_ymin = np.nanmin(all_vals[finite])
+    orig_ymax = np.nanmax(all_vals[finite])
+    pad = max(3, (orig_ymax - orig_ymin) * 0.15)  # 기존 느낌대로 살짝 여유
+    # ↓ 메인 축 스케일을 '먼저' 고정
+    ax.set_ylim(orig_ymin - pad, orig_ymax + pad)
+
+
+    n2_label, pw_label = "질소(천㎥)", "전력(천kwh)"
+    focus = {n2_label, pw_label}
+
+    lines = []
+    labels = []
     for item_name, row in df_plot.iterrows():
+        if item_name in focus:
+            continue  # 메인에서는 질소/전력 원 스케일 라인 미표시
         y = row.values.astype(float)
         ln, = ax.plot(x, y, marker='o', linewidth=2.0, markersize=6, label=item_name)
         lines.append(ln); labels.append(item_name)
-        # 점 라벨(소수 1자리)
+        # 점 라벨
         for xi, yi in zip(x, y):
             if np.isfinite(yi):
                 ax.text(xi, yi, f"{yi:.1f}", ha='center', va='bottom', fontsize=9, clip_on=True)
-        
-        
-        nudge_texts_to_avoid_overlap(ax, min_sep_px=10)   # 10~14px 사이로 취향껏
 
-
+    # 겹침 보정과 메인 축 스타일
+    nudge_texts_to_avoid_overlap(ax, min_sep_px=10)
     ax.set_xticks(x); ax.set_xticklabels(months, fontsize=11)
     ax.tick_params(axis='y', which='both', left=False, labelleft=False)
     for spine in ['left','right','top']:
         ax.spines[spine].set_visible(False)
     ax.grid(axis='y', alpha=0.18)
     ax.margins(x=0.02, y=0.15)
- 
 
-    # ----- 왼쪽 ‘표 형태’ 범례 -----
+    # ===== 밴드(질소/전력 전용, 같은 축 내부에 시각적 스케일링) =====
+    # 메인 축 최종 범위 기준으로 밴드 위치 계산
+    ymin, ymax = ax.get_ylim()
+    yr = ymax - ymin
+    band_lo = ymin + yr * 0.12
+    band_hi = ymin + yr * 0.24
+
+    # 두 시리즈의 '공통' min/max로 같은 변환(실제 차이를 유지)
+    def to_band_shared(y, lo, hi, ymin_all, ymax_all):
+        y = np.asarray(y, dtype=float)
+        m = np.isfinite(y)
+        if not m.any() or not np.isfinite(ymin_all) or not np.isfinite(ymax_all) or ymax_all == ymin_all:
+            out = np.full_like(y, (lo + hi) / 2.0)
+            out[~m] = np.nan
+            return out
+        out = (y - ymin_all) / (ymax_all - ymin_all) * (hi - lo) + lo
+        out[~m] = np.nan
+        return out
+
+    # 원값
+    y_n2 = df_plot.loc[n2_label].values.astype(float)
+    y_pw = df_plot.loc[pw_label].values.astype(float)
+
+    # 공통 범위 계산
+    both = np.r_[y_n2[np.isfinite(y_n2)], y_pw[np.isfinite(y_pw)]]
+    ymin_all, ymax_all = (np.nanmin(both), np.nanmax(both)) if both.size else (np.nan, np.nan)
+
+    # 밴드 좌표로 변환
+    y_n2_band = to_band_shared(y_n2, band_lo, band_hi, ymin_all, ymax_all)
+    y_pw_band = to_band_shared(y_pw, band_lo, band_hi, ymin_all, ymax_all)
+
+    # 색상(라인만 색, 라벨은 검정)
+    c_n2 = "#FFD400"  # 질소(노랑)
+    c_pw = "#BB2649"  # 전력(버건디)
+
+    # 밴드 라인 그리기
+    ln_n2, = ax.plot(x, y_n2_band, marker="o", linewidth=2.4, color=c_n2, zorder=4, label=n2_label)
+    ln_pw, = ax.plot(x, y_pw_band, marker="o", linewidth=2.4, color=c_pw, zorder=4, label=pw_label)
+
+    # 수치 라벨은 '항상 검정'
+    from matplotlib import patheffects as pe
+    pe_white = [pe.withStroke(linewidth=2, foreground="white")]  # 가독성(선택)
+
+    for xi, (vy, vyb) in enumerate(zip(y_n2, y_n2_band)):
+        if np.isfinite(vy):
+            ax.text(x[xi], vyb, f"{vy:.1f}", ha="center", va="bottom",
+                    fontsize=9, color="#000000", clip_on=False, zorder=5, path_effects=pe_white)
+
+    for xi, (vy, vyb) in enumerate(zip(y_pw, y_pw_band)):
+        if np.isfinite(vy):
+            ax.text(x[xi], vyb, f"{vy:.1f}", ha="center", va="top",
+                    fontsize=9, color="#000000", clip_on=False, zorder=5, path_effects=pe_white)
+
+    # 밴드 경계 가이드(선택)
+    ax.hlines([band_lo, band_hi], x[0]-0.2, x[-1]+0.2, lw=1, alpha=0.15, zorder=1)
+
+    # 범례용 핸들 추가(왼쪽 표/legend 렌더에 사용)
+    lines += [ln_n2, ln_pw]
+    labels += [n2_label, pw_label]
+
+    # 끝값 잘림 방지(밴드 라벨 보호)
+    ax.margins(x=0.06)
+
+
+
+
+
+
+
+
+
+    
+
+
+    # 범례 컬럼
     ax_leg.set_xlim(0, 1); ax_leg.set_ylim(0, len(labels))
     ax_leg.axis('off')
+    
     row_h = 1.0
     y0 = len(labels) - 0.5
     for i, (ln, lab) in enumerate(zip(lines, labels)):
         y_pos = y0 - i*row_h
-        ax_leg.plot([0.02, 0.12], [y_pos, y_pos], color=ln.get_color(), linewidth=3, solid_capstyle='round')
-        ax_leg.plot([0.07], [y_pos], marker='o', markersize=6, color=ln.get_color())
-        ax_leg.text(0.16, y_pos, lab, va='center', ha='left', fontsize=11)
+
+        ax_leg.plot([0.02, 0.12], [y_pos, y_pos],
+                    color=ln.get_color(), linewidth=3, solid_capstyle='round')
+        ax_leg.plot([0.07], [y_pos], marker='o', markersize=6,
+                    color=ln.get_color())
+        ax_leg.text(0.16, y_pos, lab, va='center', ha='left', fontsize=8)
 
     plt.tight_layout()
     st.pyplot(fig, use_container_width=True)
-
-
-# =========================
-#월 평균 클레임 지급액
-# =========================
-with t5:
-    st.markdown(f"<h4>1. 월 평균 클레임 지급액</h4>", unsafe_allow_html=True)
-    df = modules.update_monthly_claim_form(this_year)
-
-    
-
-    styled_df = (
-            df.style
-            .format(lambda x: f"{x:,.0f}" if isinstance(x, (int, float)) and pd.notnull(x) else x)
-            .set_properties(**{'text-align': 'right'})
-            .set_properties(**{'font-family': 'Noto Sans KR'})
-            
-        )
-    
-    
-    
-    
-
-
-    table_html = styled_df.to_html(index=True)
-    centered_html = f"<div style='display: flex; justify-content: center;'>{table_html}</div>"
-    st.markdown(centered_html, unsafe_allow_html=True)
 
 # =========================
 #당월 클레임 내역
