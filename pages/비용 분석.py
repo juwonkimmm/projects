@@ -769,7 +769,7 @@ with t4:
 
     # ===== 그래프=====
     try:
-        mpl.rcParams['font.family'] = 'Malgun Gothic'
+        mpl.rcParams['font.family'] = 'nanum Gothic'
         mpl.rcParams['axes.unicode_minus'] = False
     except Exception:
         pass
