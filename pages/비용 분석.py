@@ -1003,7 +1003,7 @@ with t7:
     # 음수는 빨간색
     def _neg_red(v):
         try:
-            return "color:#d62828" if float(v) < 0 else ""
+            return "color:#0000FF" if float(v) < 0 else ""
         except Exception:
             return ""
     for c in num_cols:
