@@ -1092,7 +1092,6 @@ def create_material_usage_table_chungju2(
 
 
 #####단가추이#####
-# modules.py
 import re
 import numpy as np
 import pandas as pd
@@ -1198,125 +1197,9 @@ def create_material_usage_table_unit_price(
     return out
 
 
-# 영업 외 비용분석
-# import re
-
-# _NUM_PAT = re.compile(r"^\s*\((.*)\)\s*$")   # (1,234) -> -1234
-
-# def _to_number_robust(x) -> float:
-
-#     if pd.isna(x):
-#         return 0.0
-#     s = str(x)
-#     s = s.replace("\u2212", "-")      # 유니코드 마이너스 → 하이픈
-#     s = s.replace(",", "").strip()    # 천단위 콤마 제거, 앞뒤 공백 제거
-#     m = _NUM_PAT.match(s)             # (1234) 형태 → -1234
-#     if m:
-#         s = "-" + m.group(1).strip()
-#     try:
-#         return float(s)
-#     except Exception:
-#         return 0.0
-
-# def load_nonop_cost_csv(source: str) -> pd.DataFrame:
-#     """
-#     source: st.secrets['sheets']['f_49'] (CSV URL/경로)
-#     기대 컬럼: 구분1, 구분2, 구분3, 구분4, 연도, 월, 실적
-#     """
-#     df = pd.read_csv(source, dtype=str)   # 일단 전부 문자열로 읽어 안전 파싱
-#     # 결측/공백 정리
-#     for c in ["구분1","구분2","구분3","구분4"]:
-#         if c in df.columns:
-#             df[c] = df[c].fillna("").astype(str).str.strip()
-
-#     # 연도/월 정규화 (숫자만 추출)
-#     if "연도" in df.columns:
-#         df["연도"] = pd.to_numeric(df["연도"].str.extract(r"(\d+)", expand=False), errors="coerce").fillna(0).astype(int)
-#     if "월" in df.columns:
-#         df["월"] = pd.to_numeric(df["월"].str.extract(r"(\d+)", expand=False), errors="coerce").fillna(0).astype(int)
-
-#     # 실적 수치화(강화 파서)
-#     df["실적"] = df.get("실적", 0).apply(_to_number_robust)
-
-#     # 중복 로우 합산(동일 키가 여러 번 있으면 합계)
-#     key = [c for c in ["구분1","구분2","구분3","구분4","연도","월"] if c in df.columns]
-#     df = df.groupby(key, as_index=False, dropna=False)["실적"].sum()
-
-#     return df
+#영업외 비용 내역     
 
 
-# def create_nonop_cost_3month_by_g2_g4(year: int, month: int, data: pd.DataFrame) -> pd.DataFrame:
-#     """
-#     최근 3개월(전전월, 전월, 당월) 테이블을 '구분2' 섹션(예: 기타비용/금융비용)으로 나누고
-#     각 섹션 안에 '구분4'(세부항목)를 행으로 나열. '증감'=당월-전월.
-#     반환 컬럼: [구분, 계정, 'YY.M월 실적'(x3), 증감, _row_type]
-#     """
-#     y = int(year)
-#     m = max(int(month), 1)
-#     m1 = max(m - 1, 1)
-#     m2 = max(m - 2, 1)
-
-#     df_y = data[(data["연도"] == y) & (data["월"].isin([m2, m1, m]))].copy()
-
-#     # 월별 피벗: index = (구분2, 구분4)
-#     pivot = (
-#         df_y.pivot_table(
-#             index=["구분2", "구분4"],
-#             columns="월",
-#             values="실적",
-#             aggfunc="sum",
-#             fill_value=0.0,
-#         )
-#         .reindex(columns=[m2, m1, m], fill_value=0.0)
-#         .reset_index()
-#     )
-
-#     # 라벨 지정
-#     def _lbl(mm: int) -> str:
-#         return f"'{str(y)[-2:]}.{mm}월 실적"
-#     c_m2, c_m1, c_m = _lbl(m2), _lbl(m1), _lbl(m)
-
-#     pivot[c_m2] = pivot[m2]
-#     pivot[c_m1] = pivot[m1]
-#     pivot[c_m]  = pivot[m]
-#     pivot["증감"] = pivot[c_m] - pivot[c_m1]
-#     pivot = pivot.drop(columns=[m2, m1, m])
-
-#     # 섹션별로: 세부항목(구분4) 행들 + 섹션 집계행
-#     rows = []
-
-#     def add_row(sec, acct, v2, v1, v, diff, row_type):
-#         rows.append({
-#             "구분": sec, "계정": acct,
-#             c_m2: float(v2), c_m1: float(v1), c_m: float(v), "증감": float(diff),
-#             "_row_type": row_type
-#         })
-
-#     for sec, grp in pivot.groupby("구분2", dropna=False,sort = True ):
-#         # 세부항목(구분4) 행
-#         for _, r in grp.sort_values(by="구분4").iterrows():
-#             add_row("", r["구분4"], r[c_m2], r[c_m1], r[c_m], r["증감"], "item")
-#         # 섹션 집계
-#         sub = grp[[c_m2, c_m1, c_m, "증감"]].sum(numeric_only=True)
-#         add_row(sec, "", sub[c_m2], sub[c_m1], sub[c_m], sub["증감"], "section_total")
-
-#     # 최종 '계'
-#     out = pd.DataFrame(rows)
-#     grand = out[out["_row_type"] == "section_total"][[c_m2, c_m1, c_m, "증감"]].sum(numeric_only=True)
-#     rows.append({
-#         "구분": "계", "계정": "", c_m2: grand[c_m2], c_m1: grand[c_m1], c_m: grand[c_m], "증감": grand["증감"],
-#         "_row_type": "grand_total"
-#     })
-
-#     out = pd.DataFrame(rows)
-#     # 보이는 컬럼 순서
-#     return out[["구분", "계정", c_m2, c_m1, c_m, "증감", "_row_type"]]
-
-# --- modules.py ---
-# import re
-# import pandas as pd
-
-# # (로더는 이전 답변의 robust 버전 사용 권장) ----------------------------
 _NUM_PAT = re.compile(r"^\s*\((.*)\)\s*$")
 def _to_number_robust(x)->float:
     if pd.isna(x): return 0.0
@@ -1345,97 +1228,6 @@ def load_nonop_cost_csv(source: str) -> pd.DataFrame:
     df["실적"] = df.get("실적", 0).apply(_to_number_robust)
     key = [c for c in ["구분1","구분2","구분3","구분4","연도","월"] if c in df.columns]
     return df.groupby(key, as_index=False, dropna=False)["실적"].sum()
-# # ----------------------------------------------------------------------
-
-# def create_nonop_cost_3month_by_g2_g4(year: int, month: int, data: pd.DataFrame) -> pd.DataFrame:
-#     """
-#     섹션: 구분2(예: 기타비용/금융비용)
-#     행   : 구분4(세부항목)
-#     특수 규칙: '기타비용' 섹션에서 '잡손실'을
-#               ├─ '고철매각작업비'
-#               └─ '기타' = 잡손실 − 고철매각작업비
-#               로 나눠서 표시(부모행 '잡손실' 포함, 섹션합계는 부모 제외).
-#     열   : 전전월/전월/당월 실적 + 증감(당월−전월)
-#     """
-#     y = int(year)
-#     m = max(int(month), 1)
-#     m1, m2 = max(m-1,1), max(m-2,1)
-
-#     df_y = data[(data["연도"] == y) & (data["월"].isin([m2, m1, m]))].copy()
-
-#     # 월 피벗 (구분2, 구분4)
-#     piv = (
-#         df_y.pivot_table(index=["구분2","구분4"], columns="월", values="실적",
-#                          aggfunc="sum", fill_value=0.0)
-#             .reindex(columns=[m2, m1, m], fill_value=0.0)
-#             .reset_index()
-#     )
-
-#     def _lbl(mm:int)->str: return f"'{str(y)[-2:]}.{mm}월 실적"
-#     c_m2, c_m1, c_m = _lbl(m2), _lbl(m1), _lbl(m)
-#     for mm, col in zip([m2,m1,m],[c_m2,c_m1,c_m]): piv[col] = piv[mm].astype(float)
-#     piv["증감"] = piv[c_m] - piv[c_m1]
-#     piv = piv.drop(columns=[m2,m1,m])
-
-#     rows = []
-#     def add_row(sec, acct, v2, v1, v, diff, row_type):
-#         rows.append({"구분":sec, "계정":acct, c_m2:float(v2), c_m1:float(v1), c_m:float(v), "증감":float(diff), "_row_type":row_type})
-
-#     for sec, grp in piv.groupby("구분2", dropna=False):
-#         grp = grp.copy()
-
-#         # ── 기본 아이템(구분4) 목록 ──
-#         items = grp.sort_values("구분4").to_dict(orient="records")
-
-#         # ── [특수 처리] '기타비용' 섹션의 '잡손실' 분해 ──
-#         if str(sec) == "기타비용":
-#             # 원본 행 찾기
-#             r_jab = next((r for r in items if r["구분4"] == "잡손실"), None)
-#             r_steel = next((r for r in items if r["구분4"] == "고철매각작업비"), None)
-
-#             if r_jab is not None and r_steel is not None:
-#                 # 목록에서 개별 표시 제거: 이 둘은 아래 부모-자식으로 재표시
-#                 items = [r for r in items if r["구분4"] not in ("잡손실","고철매각작업비")]
-
-                
-
-#                 # 자식1: 고철매각작업비(원본)
-#                 add_row("", "     고철매각작업비", r_steel[c_m2], r_steel[c_m1], r_steel[c_m], r_steel["증감"], "child")
-
-
-#                 # 자식2: 기타 = 잡손실 − 고철매각작업비   (월별/증감 각각 계산)
-#                 def _residual(key): return float(r_jab[key]) - float(r_steel[key])
-#                 add_row("", "기타", _residual(c_m2), _residual(c_m1), _residual(c_m), _residual("증감"), "child")
-#                 # 부모: 잡손실(원본 그대로)
-#                 add_row("", "잡손실", r_jab[c_m2], r_jab[c_m1], r_jab[c_m], r_jab["증감"], "parent")
-                
-
-#         # ── 나머지 일반 항목들(그 섹션 내 다른 구분4) ──
-#         for r in items:
-#             add_row("", r["구분4"], r[c_m2], r[c_m1], r[c_m], r["증감"], "item")
-
-        
-
-
-
-        
-
-
-#         # 섹션 합계(부모행은 제외: parent는 자식 합과 중복되므로)
-#         df_sec = pd.DataFrame(rows)[- (len(items) + (3 if str(sec)=="기타비용" and r_jab is not None and r_steel is not None else 0)) : ]
-        
-#         sec_block = [r for r in rows if r["구분"]=="" or r["구분"]==sec]
-#         # parent 제외
-#         sec_nums = pd.DataFrame([r for r in sec_block if r["_row_type"]!="parent"])[[c_m2,c_m1,c_m,"증감"]].sum(numeric_only=True)
-#         add_row(sec, "", sec_nums[c_m2], sec_nums[c_m1], sec_nums[c_m], sec_nums["증감"], "section_total")
-
-#     # 최종 '계' (모든 섹션 합계)
-#     out = pd.DataFrame(rows)
-#     grand = out[out["_row_type"]=="section_total"][[c_m2,c_m1,c_m,"증감"]].sum(numeric_only=True)
-#     rows.append({"구분":"계","계정":"", c_m2:grand[c_m2], c_m1:grand[c_m1], c_m:grand[c_m], "증감":grand["증감"], "_row_type":"grand_total"})
-#     # ... 위 계산 로직 그대로 ...
-#     out = pd.DataFrame(rows)
-#     return out[["구분", "계정", c_m2, c_m1, c_m, "증감", "_row_type"]]
 
 def create_nonop_cost_3month_by_g2_g4(year: int, month: int, data: pd.DataFrame) -> pd.DataFrame:
     """
