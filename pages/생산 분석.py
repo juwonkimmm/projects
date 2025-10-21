@@ -567,7 +567,7 @@ def load_defect(url: str) -> pd.DataFrame:
 year = int(st.session_state['year'])
 month = int(st.session_state['month'])
 
-st.image("D:\seah\pages\logo.gif", width=200)
+
 st.markdown(f"## {year}년 {month}월 생산 분석")
 t1, t2, t3 = st.tabs(['전체 생산실적', '부적합 발생내역_포항공장', '부적합 발생내역_충주 1,2공장'])
 st.divider()
