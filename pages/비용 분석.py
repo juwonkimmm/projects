@@ -248,61 +248,65 @@ with t1:
     st.markdown(unit, unsafe_allow_html=True)
 
 
-    
 
-    df_plot = df_table.copy()  # index: 항목들, columns: '2월'...'N월'
-    months = list(df_plot.columns)
-    x = np.arange(len(months))
+    df_plot = df_table.copy()
+    months  = list(df_plot.columns)          # x축 라벨
+    x       = list(months)
 
-    fig = plt.figure(figsize=(12, 4))
-
-    gs = fig.add_gridspec(1, 2, width_ratios=[1.8, 8.2], wspace=0.02)
-    ax_leg = fig.add_subplot(gs[0, 0])
-    ax     = fig.add_subplot(gs[0, 1])
+    fig = go.Figure()
 
     # ----- 본 그래프 -----
-    lines = []
-    labels = []
-    for item_name, row in df_plot.iterrows():
-        y = row.values.astype(float)
-        ln, = ax.plot(x, y, marker='o', linewidth=2.0, markersize=6, label=item_name)
-        lines.append(ln); labels.append(item_name)
-        # 점 라벨(소수 1자리)
-        for xi, yi in zip(x, y):
-            if np.isfinite(yi):
-                ax.text(xi, yi, f"{yi:.1f}", ha='center', va='bottom', fontsize=9, clip_on=True)
+    for item_name in df_plot.index:
+        y = pd.to_numeric(df_plot.loc[item_name], errors="coerce").values.astype(float)
 
-        nudge_texts_to_avoid_overlap(ax, min_sep_px=10)   # 10~14px 사이로 취향껏
+        # 라벨 겹침 완화
+        textpos = ["top center" if i % 2 == 0 else "bottom center" for i in range(len(y))]
 
-    ax.set_xticks(x); ax.set_xticklabels(months, fontsize=11)
-    ax.tick_params(axis='y', which='both', left=False, labelleft=False)
-    for spine in ['left','right','top']:
-        ax.spines[spine].set_visible(False)
-    ax.grid(axis='y', alpha=0.18)          
-    ax.margins(x=0.02, y=0.15)              
+        fig.add_trace(go.Scatter(
+            x=x, y=y, name=item_name,
+            mode="lines+markers+text",
+            line=dict(width=2),
+            marker=dict(size=6),
+            text=[f"{v:.1f}" if np.isfinite(v) else "" for v in y],
+            textposition=textpos,
+            textfont=dict(size=11),
+            hovertemplate="월=%{x}<br>값=%{y:.1f}<extra></extra>",
+        ))
 
+    # ----- 레이아웃 (왼쪽 표형 범례, y축 라벨 숨김, 스타일) -----
+    fig.update_layout(
+        title="[포항]",
+        template="plotly_white",
+        margin=dict(l=150, r=20, t=40, b=40),  # 왼쪽 범례 자리
+        hovermode="x unified",
+        font=dict(family="Noto Sans KR", size=12),
 
-    ax.set_title("[포항]", fontsize=10, fontweight='bold', pad=10)
+        # 범례를 왼쪽 '바깥'에 세로로
+        legend=dict(
+            orientation="v",
+            x=-0.15, y=1.0, xanchor="left", yanchor="top",
+            bgcolor="rgba(255,255,255,0.8)",
+            borderwidth=1
+        )
+    )
 
+    # 축/그리드: Matplotlib 설정과 유사하게
+    fig.update_xaxes(
+        title_text=None,
+        tickmode="array", tickvals=x, ticktext=x,
+        showgrid=False  # 필요 시 True
+    )
+    fig.update_yaxes(
+        title_text=None,
+        showticklabels=False,          # y축 눈금 라벨 숨김
+        zeroline=False,
+        showgrid=True,
+        gridcolor="rgba(0,0,0,0.18)"   # y 그리드 옅게
+    )
 
-    # ----- 왼쪽 ‘표 형태’ 범례 컬럼 -----
-    # 축 요소 숨기고, 빈 좌표계에 라인 아이콘 + 텍스트를 행처럼 직접 그립니다.
-    ax_leg.set_xlim(0, 1); ax_leg.set_ylim(0, len(labels))
-    ax_leg.axis('off')
+    # Streamlit
+    st.plotly_chart(fig, use_container_width=True)
 
-    row_h = 1.0  # 행 간격
-    y0 = len(labels) - 0.5
-    for i, (ln, lab) in enumerate(zip(lines, labels)):
-        y_pos = y0 - i*row_h
-        # 색상/마커는 그래프 라인과 동일하게
-        ax_leg.plot([0.02, 0.12], [y_pos, y_pos],
-                    color=ln.get_color(), linewidth=3, solid_capstyle='round')
-        ax_leg.plot([0.07], [y_pos], marker='o', markersize=6,
-                    color=ln.get_color())
-        ax_leg.text(0.16, y_pos, lab, va='center', ha='left', fontsize=11)
-
-    plt.tight_layout()
-    st.pyplot(fig, use_container_width=True)
 
 
 
@@ -389,63 +393,85 @@ with t2:
     st.markdown(unit, unsafe_allow_html=True)
 
 
-    
-
-    df_plot = df_table.copy()  # index: 항목들, columns: '2월'...'N월'
-    months = list(df_plot.columns)
-    x = np.arange(len(months))
-
-    fig = plt.figure(figsize=(12, 4))
-
-    gs = fig.add_gridspec(1, 2, width_ratios=[1.8, 8.2], wspace=0.02)
-    ax_leg = fig.add_subplot(gs[0, 0])
-    ax     = fig.add_subplot(gs[0, 1])
-
-    # ----- 본 그래프 -----
-    lines = []
-    labels = []
-    for item_name, row in df_plot.iterrows():
-        y = row.values.astype(float)
-        ln, = ax.plot(x, y, marker='o', linewidth=2.0, markersize=6, label=item_name)
-        lines.append(ln); labels.append(item_name)
-        # 점 라벨(소수 1자리)
-        for xi, yi in zip(x, y):
-            if np.isfinite(yi):
-                ax.text(xi, yi, f"{yi:.1f}", ha='center', va='bottom', fontsize=9, clip_on=True)
-
-        
-
-        nudge_texts_to_avoid_overlap(ax, min_sep_px=10)   # 10~14px 사이로 취향껏
-
-    ax.set_xticks(x); ax.set_xticklabels(months, fontsize=11)
-    ax.tick_params(axis='y', which='both', left=False, labelleft=False)
-    for spine in ['left','right','top']:
-        ax.spines[spine].set_visible(False)
-    ax.grid(axis='y', alpha=0.18)          
-    ax.margins(x=0.02, y=0.15)              
 
 
-    ax.set_title("[충주1]", fontsize=10, fontweight='bold', pad=10)
+    # df_plot = df_table.copy()  # index: 항목들, columns: '2월'...'N월'
+    # months = list(df_plot.columns)
+    # x = np.arange(len(months))
 
+    # fig = plt.figure(figsize=(12, 4))
 
-    # ----- 왼쪽 ‘표 형태’ 범례 컬럼 -----
-    # 축 요소 숨기고, 빈 좌표계에 라인 아이콘 + 텍스트를 행처럼 직접 그립니다.
-    ax_leg.set_xlim(0, 1); ax_leg.set_ylim(0, len(labels))
-    ax_leg.axis('off')
+    # gs = fig.add_gridspec(1, 2, width_ratios=[1.8, 8.2], wspace=0.02)
+    # ax_leg = fig.add_subplot(gs[0, 0])
+    # ax     = fig.add_subplot(gs[0, 1])
 
-    row_h = 1.0  # 행 간격
-    y0 = len(labels) - 0.5
-    for i, (ln, lab) in enumerate(zip(lines, labels)):
-        y_pos = y0 - i*row_h
-        # 색상/마커는 그래프 라인과 동일하게
-        ax_leg.plot([0.02, 0.12], [y_pos, y_pos],
-                    color=ln.get_color(), linewidth=3, solid_capstyle='round')
-        ax_leg.plot([0.07], [y_pos], marker='o', markersize=6,
-                    color=ln.get_color())
-        ax_leg.text(0.16, y_pos, lab, va='center', ha='left', fontsize=11)
+    # # ----- 본 그래프 -----
+    # lines = []
+    # labels = []
+    # for item_name, row in df_plot.iterrows():
+    df_plot = df_table.copy()
+    months  = list(df_plot.columns)      # x축 라벨
+    x       = months                     # 카테고리형 x
 
-    plt.tight_layout()
-    st.pyplot(fig, use_container_width=True)
+    fig = go.Figure()
+
+    # ----- 본 그래프: 라인+마커+값 라벨 -----
+    for item_name in df_plot.index:
+        y = pd.to_numeric(df_plot.loc[item_name], errors="coerce").values.astype(float)
+
+        # 라벨 겹침 완화: 위/아래 교차 배치 (원하면 "top center"로 고정)
+        textpos = ["top center" if i % 2 == 0 else "bottom center" for i in range(len(y))]
+
+        fig.add_trace(go.Scatter(
+            x=x, y=y, name=item_name,
+            mode="lines+markers+text",
+            line=dict(width=2),
+            marker=dict(size=6),
+            text=[f"{v:.1f}" if np.isfinite(v) else "" for v in y],
+            textposition=textpos,
+            textfont=dict(size=11),
+            hovertemplate="월=%{x}<br>값=%{y:.1f}<extra></extra>",
+        ))
+
+    # ----- 레이아웃 / 축 -----
+    fig.update_layout(
+        title="[충주1]",
+        template="plotly_white",
+        margin=dict(l=150, r=20, t=50, b=40),   # 왼쪽 범례 자리
+        hovermode="x unified",
+        font=dict(family="Noto Sans KR", size=12),
+        legend=dict(                            # 왼쪽 '표형' 범례
+            orientation="v",
+            x=-0.15, y=1.0, xanchor="left", yanchor="top",
+            bgcolor="rgba(255,255,255,0.8)",
+            borderwidth=1
+        )
+    )
+
+    # x축: 카테고리 라벨 그대로
+    fig.update_xaxes(
+        tickmode="array", tickvals=x, ticktext=x,
+        showgrid=False
+    )
+    # y축: 라벨 숨김 + 옅은 그리드
+    fig.update_yaxes(
+        showticklabels=False,
+        zeroline=False,
+        showgrid=True,
+        gridcolor="rgba(0,0,0,0.18)"
+    )
+
+    # (선택) 여백 살짝: matplotlib의 ax.margins 유사 효과
+    # 필요시 y범위 패딩 주기
+    all_vals = pd.to_numeric(df_plot.values.ravel(), errors="coerce").astype(float)
+    finite = np.isfinite(all_vals)
+    if finite.any():
+        ymin = float(np.nanmin(all_vals[finite])); ymax = float(np.nanmax(all_vals[finite]))
+        pad = max((ymax - ymin) * 0.15, 1e-9)     # matplotlib의 y=0.15 마진 유사
+        fig.update_yaxes(range=[ymin - pad, ymax + pad])
+
+    # Streamlit 출력
+    st.plotly_chart(fig, use_container_width=True)
 
 # =========================
 #사용량 원단위 추이_충주2
@@ -527,181 +553,97 @@ with t3:
 
 
 
-    
+    try:
+        mpl.rcParams['font.family'] = 'Malgun Gothic'  # Windows 한글
+        mpl.rcParams['axes.unicode_minus'] = False
+    except Exception:
+        pass
 
-    df_plot = df_table.copy()  
-    months = list(df_plot.columns)
-    x = np.arange(len(months))
+    # df_plot = df_table.copy()  
+    # months = list(df_plot.columns)
+    # x = np.arange(len(months))
 
-    fig = plt.figure(figsize=(12, 1.8))
+    # fig = plt.figure(figsize=(12, 1.8))
 
-    gs = fig.add_gridspec(1, 2, width_ratios=[1.8, 7], wspace=0.02)
-    ax_leg = fig.add_subplot(gs[0, 0])
-    ax     = fig.add_subplot(gs[0, 1])
+    # gs = fig.add_gridspec(1, 2, width_ratios=[1.8, 7], wspace=0.02)
+    # ax_leg = fig.add_subplot(gs[0, 0])
+    # ax     = fig.add_subplot(gs[0, 1])
 
-    # ----- 본 그래프 -----
-    lines = []
-    labels = []
-    for item_name, row in df_plot.iterrows():
-        y = row.values.astype(float)
-        ln, = ax.plot(x, y, marker='o', linewidth=2.0, markersize=6, label=item_name)
-        lines.append(ln); labels.append(item_name)
-        # 점 라벨(소수 1자리)
-        for xi, yi in zip(x, y):
-            if np.isfinite(yi):
-                ax.text(xi, yi, f"{yi:.1f}", ha='center', va='bottom', fontsize=9, clip_on=True)
-        
-        nudge_texts_to_avoid_overlap(ax, min_sep_px=10)   
+    # # ----- 본 그래프 -----
+    # lines = []
+    # labels = []
+    # for item_name, row in df_plot.iterrows():
 
-    ax.set_xticks(x); ax.set_xticklabels(months, fontsize=11)
-    ax.tick_params(axis='y', which='both', left=False, labelleft=False)
-    for spine in ['left','right','top']:
-        ax.spines[spine].set_visible(False)
-    ax.grid(axis='y', alpha=0.18)          
-    ax.margins(x=0.02, y=0.15)              
+    df_plot = df_table.copy()                     # index: 항목, columns: '2월'...'N월'
+    months  = list(df_plot.columns)               # x축 카테고리
+    x       = months
 
+    fig = go.Figure()
 
-    ax.set_title("[충주2]", fontsize=10, fontweight='bold', pad=10)
+    # ----- 본 그래프: 라인 + 마커 + 값 라벨 -----
+    for i, item_name in enumerate(df_plot.index):
+        y = pd.to_numeric(df_plot.loc[item_name], errors="coerce").values.astype(float)
 
+        # 라벨 겹침 완화: 위/아래 교차 (필요시 "top center"로 고정)
+        textpos = ["top center" if j % 2 == 0 else "bottom center" for j in range(len(y))]
 
-    # ----- 왼쪽 ‘표 형태’ 범례 컬럼 -----
-    # 축 요소 숨기고, 빈 좌표계에 라인 아이콘 + 텍스트를 행처럼 직접 그립니다.
-    ax_leg.set_xlim(0, 1); ax_leg.set_ylim(0, len(labels))
-    ax_leg.axis('off')
+        fig.add_trace(go.Scatter(
+            x=x, y=y, name=item_name,
+            mode="lines+markers+text",
+            line=dict(width=2),
+            marker=dict(size=6),
+            text=[f"{v:.1f}" if np.isfinite(v) else "" for v in y],
+            textposition=textpos,
+            textfont=dict(size=11),
+            hovertemplate="월=%{x}<br>값=%{y:.1f}<extra></extra>",
+        ))
 
-    row_h = 1.0  # 행 간격
-    y0 = len(labels) - 0.5
-    for i, (ln, lab) in enumerate(zip(lines, labels)):
-        y_pos = y0 - i*row_h
-        # 색상/마커는 그래프 라인과 동일하게
-        ax_leg.plot([0.02, 0.12], [y_pos, y_pos],
-                    color=ln.get_color(), linewidth=3, solid_capstyle='round')
-        ax_leg.plot([0.07], [y_pos], marker='o', markersize=6,
-                    color=ln.get_color())
-        ax_leg.text(0.16, y_pos, lab, va='center', ha='left', fontsize=11)
+    # ----- 레이아웃/축 -----
+    fig.update_layout(
+        title="[충주2]",
+        template="plotly_white",
+        height=260,                                 # figsize(12, 1.8) 느낌으로 낮게
+        margin=dict(l=150, r=20, t=50, b=30),       # 왼쪽 범례 자리
+        hovermode="x unified",
+        uniformtext_minsize=9, uniformtext_mode="hide",
+        font=dict(family="Noto Sans KR", size=12),
 
-    plt.tight_layout()
-    st.pyplot(fig, use_container_width=True)
+        # 왼쪽 ‘표형’ 범례 (세로, 바깥)
+        legend=dict(
+            orientation="v",
+            x=-0.15, y=1.0, xanchor="left", yanchor="top",
+            bgcolor="rgba(255,255,255,0.8)",
+            borderwidth=1
+        )
+    )
+
+    # x축: 카테고리 틱
+    fig.update_xaxes(
+        tickmode="array", tickvals=x, ticktext=x,
+        showgrid=False
+    )
+
+    # y축: 눈금 라벨 숨김 + 옅은 그리드 + 마진 유사 패딩
+    fig.update_yaxes(
+        showticklabels=False,
+        zeroline=False,
+        showgrid=True,
+        gridcolor="rgba(0,0,0,0.18)"
+    )
+
+    all_vals = pd.to_numeric(df_plot.values.ravel(), errors="coerce").astype(float)
+    finite = np.isfinite(all_vals)
+    if finite.any():
+        ymin = float(np.nanmin(all_vals[finite])); ymax = float(np.nanmax(all_vals[finite]))
+        pad = max((ymax - ymin) * 0.15, 1e-9)
+        fig.update_yaxes(range=[ymin - pad, ymax + pad])
+
+    # Streamlit 출력
+    st.plotly_chart(fig, use_container_width=True)
 
 # =========================
 #단가 추이
 # =========================
-# with t4:
-#     st.markdown("### 4) 단가 추이", unsafe_allow_html=True)
-
-#     file_name = st.secrets["sheets"]["f_46"]
-
-#     @st.cache_data(ttl=600)
-#     def load_submat_df(path: str) -> pd.DataFrame:
-#         return pd.read_csv(path, encoding="utf-8", thousands=",")
-
-#     df_src = load_submat_df(file_name)
-
-#     # ===== 표 생성 (2월 ~ 데이터의 마지막 월) =====
-#     df_table = modules.create_material_usage_table_unit_price(
-#         year=this_year,
-#         month=current_month,
-#         data=df_src,
-#         start_month=2,
-#         round_digits=1,   # 소수 첫째자리 반올림
-#     )
-
-#     # ➜ 인덱스를 컬럼으로 승격 (헤더 한 줄)
-#     df_show = df_table.reset_index()
-#     df_show.columns.name = None
-
-#     numeric_cols = df_show.select_dtypes(include="number").columns
-#     first_col = df_show.columns[0]
-
-#     # ===== 표 스타일  =====
-#     styled = (
-#         df_show.style
-#         .format({col: "{:.1f}" for col in numeric_cols}, na_rep="-")
-#         .hide(axis="index")
-#         # 1) 첫 번째 열 강조 
-#         .set_properties(
-#             subset=[first_col],
-#             **{
-#                 "text-align": "left",
-#                 "font-weight": "600",
-#                 "background-color": "#f0f0f0",
-#                 "white-space": "nowrap",
-#             }
-#         )
-#         # 2) 헤더 스타일 
-#         .set_table_styles([
-#             {
-#                 "selector": "th.col_heading.level0.col0",
-#                 "props": [
-#                     ("background-color", "#f0f0f0"),
-#                     ("font-weight", "700"),
-#                     ("text-align", "center")
-#                 ],
-#             },
-#             {"selector": "th.col_heading", "props": [("text-align", "center")]},
-#         ])
-#         # 3) 숫자 컬럼 정렬 
-#         .set_properties(subset=[c for c in df_show.columns if c in numeric_cols], **{"text-align": "center"})
-#     )
-
-#     st.markdown(
-#         f"<div style='display:flex; justify-content:center'>{styled.to_html(index=False)}</div>",
-#         unsafe_allow_html=True
-#     )
-
-#     st.divider()
-
-#     # ===== 그래프=====
-    
-
-#     df_plot = df_table.copy()
-#     df_plot = df_plot.apply(pd.to_numeric, errors="coerce")
-
-#     months = list(df_plot.columns)
-#     x = np.arange(len(months))
-
-#     fig = plt.figure(figsize=(12, 5))                      # 높이 슬림
-#     gs = fig.add_gridspec(1, 2, width_ratios=[1.8, 8.2], wspace=0.02)  
-#     ax_leg = fig.add_subplot(gs[0, 0])
-#     ax     = fig.add_subplot(gs[0, 1])
-
-#     # ----- 본 그래프 -----
-#     lines, labels = [], []
-#     for item_name, row in df_plot.iterrows():
-#         y = row.values.astype(float)
-#         ln, = ax.plot(x, y, marker='o', linewidth=2.0, markersize=6, label=item_name)
-#         lines.append(ln); labels.append(item_name)
-#         # 점 라벨(소수 1자리)
-#         for xi, yi in zip(x, y):
-#             if np.isfinite(yi):
-#                 ax.text(xi, yi, f"{yi:.1f}", ha='center', va='bottom', fontsize=9, clip_on=True)
-        
-        
-#         nudge_texts_to_avoid_overlap(ax, min_sep_px=10)   # 10~14px 사이로 취향껏
-
-
-#     ax.set_xticks(x); ax.set_xticklabels(months, fontsize=11)
-#     ax.tick_params(axis='y', which='both', left=False, labelleft=False)
-#     for spine in ['left','right','top']:
-#         ax.spines[spine].set_visible(False)
-#     ax.grid(axis='y', alpha=0.18)
-#     ax.margins(x=0.02, y=0.15)
- 
-
-#     # ----- 왼쪽 ‘표 형태’ 범례 -----
-#     ax_leg.set_xlim(0, 1); ax_leg.set_ylim(0, len(labels))
-#     ax_leg.axis('off')
-#     row_h = 1.0
-#     y0 = len(labels) - 0.5
-#     for i, (ln, lab) in enumerate(zip(lines, labels)):
-#         y_pos = y0 - i*row_h
-#         ax_leg.plot([0.02, 0.12], [y_pos, y_pos], color=ln.get_color(), linewidth=3, solid_capstyle='round')
-#         ax_leg.plot([0.07], [y_pos], marker='o', markersize=6, color=ln.get_color())
-#         ax_leg.text(0.16, y_pos, lab, va='center', ha='left', fontsize=11)
-
-#     plt.tight_layout()
-#     st.pyplot(fig, use_container_width=True)
-
 with t4:
     st.markdown("### 4) 단가 추이", unsafe_allow_html=True)
 
@@ -767,164 +709,115 @@ with t4:
 
     st.divider()
 
-    # ===== 그래프=====
-    # try:
-    #     mpl.rcParams['font.family'] = 'Malgun Gothic'
-    #     mpl.rcParams['axes.unicode_minus'] = False
-    # except Exception:
-    #     pass
+    # ----- 그래프 불러오기 -----
 
     df_plot = df_table.copy()
     df_plot = df_plot.apply(pd.to_numeric, errors="coerce")
 
-    months = list(df_plot.columns)
-    x = np.arange(len(months))
-
-    fig = plt.figure(figsize=(12, 4))
-
-    # 기존: [1.8, 8.2]  →  왼쪽(표) 더 얇게
-    gs = fig.add_gridspec(1, 2, width_ratios=[1.0, 7.0], wspace=0.08)  
-    ax_leg = fig.add_subplot(gs[0, 0])
-    ax     = fig.add_subplot(gs[0, 1])
-    ax.margins(x=0.12, y=0.15)
-    
-
-
-    
-    
-    
     
 
 
     # ----- 본 그래프 -----
-
-    # 전체 데이터(질소/전력 포함)로 원래 메인 스케일 고정
-    all_vals = df_plot.to_numpy(dtype=float)
-    finite = np.isfinite(all_vals)
-    orig_ymin = np.nanmin(all_vals[finite])
-    orig_ymax = np.nanmax(all_vals[finite])
-    pad = max(3, (orig_ymax - orig_ymin) * 0.15)  # 기존 느낌대로 살짝 여유
-    # ↓ 메인 축 스케일을 '먼저' 고정
-    ax.set_ylim(orig_ymin - pad, orig_ymax + pad)
-
+    from plotly.subplots import make_subplots
 
     n2_label, pw_label = "질소(천㎥)", "전력(천kwh)"
-    focus = {n2_label, pw_label}
+    x = list(months)
+    others = [idx for idx in df_plot.index if idx not in {n2_label, pw_label}]
 
-    lines = []
-    labels = []
-    for item_name, row in df_plot.iterrows():
-        if item_name in focus:
-            continue  # 메인에서는 질소/전력 원 스케일 라인 미표시
-        y = row.values.astype(float)
-        ln, = ax.plot(x, y, marker='o', linewidth=2.0, markersize=6, label=item_name)
-        lines.append(ln); labels.append(item_name)
-        # 점 라벨
-        for xi, yi in zip(x, y):
-            if np.isfinite(yi):
-                ax.text(xi, yi, f"{yi:.1f}", ha='center', va='bottom', fontsize=9, clip_on=True)
+    # --- 데이터 ---
+    y_n2 = pd.to_numeric(df_plot.loc[n2_label], errors="coerce").values.astype(float)
+    y_pw = pd.to_numeric(df_plot.loc[pw_label], errors="coerce").values.astype(float)
+    others_vals = (pd.to_numeric(df_plot.loc[others].values.ravel(), errors="coerce")
+                .astype(float) if len(others) else np.array([], dtype=float))
 
-    # 겹침 보정과 메인 축 스타일
-    nudge_texts_to_avoid_overlap(ax, min_sep_px=10)
-    ax.set_xticks(x); ax.set_xticklabels(months, fontsize=11)
-    ax.tick_params(axis='y', which='both', left=False, labelleft=False)
-    for spine in ['left','right','top']:
-        ax.spines[spine].set_visible(False)
-    ax.grid(axis='y', alpha=0.18)
-    ax.margins(x=0.02, y=0.15)
+    def rng(v, pad_ratio=0.06):
+        f = np.isfinite(v)
+        if not f.any(): return [0.0, 1.0]
+        vmin, vmax = float(np.nanmin(v[f])), float(np.nanmax(v[f]))
+        pad = max((vmax - vmin) * pad_ratio, 1e-9)
+        return [vmin - pad, vmax + pad]
 
-    # ===== 밴드(질소/전력 전용, 같은 축 내부에 시각적 스케일링) =====
-    # 메인 축 최종 범위 기준으로 밴드 위치 계산
-    ymin, ymax = ax.get_ylim()
-    yr = ymax - ymin
-    band_lo = ymin + yr * 0.12
-    band_hi = ymin + yr * 0.24
+    y1_range = rng(others_vals)  # 질소/전력 제외
+    y2_range = rng(np.r_[y_n2[np.isfinite(y_n2)], y_pw[np.isfinite(y_pw)]])  # 질소/전력용
 
-    # 두 시리즈의 '공통' min/max로 같은 변환(실제 차이를 유지)
-    def to_band_shared(y, lo, hi, ymin_all, ymax_all):
-        y = np.asarray(y, dtype=float)
-        m = np.isfinite(y)
-        if not m.any() or not np.isfinite(ymin_all) or not np.isfinite(ymax_all) or ymax_all == ymin_all:
-            out = np.full_like(y, (lo + hi) / 2.0)
-            out[~m] = np.nan
-            return out
-        out = (y - ymin_all) / (ymax_all - ymin_all) * (hi - lo) + lo
-        out[~m] = np.nan
-        return out
+    # --- 2행 1열 서브플롯: x축 공유 ---
+    fig = make_subplots(
+        rows=2, cols=1, shared_xaxes=True,
+        vertical_spacing=0.03,          
+        row_heights=[0.80, 0.25]       
+    )
 
-    # 원값
-    y_n2 = df_plot.loc[n2_label].values.astype(float)
-    y_pw = df_plot.loc[pw_label].values.astype(float)
+    # 질소 전력 제외
+    base_colors = ["#1f77b4","#ff7f0e","#939393","#bcbd22","#000080","#009900"]
+    for i, name in enumerate(others):
+        y = pd.to_numeric(df_plot.loc[name], errors="coerce").values.astype(float)
+        fig.add_trace(
+            go.Scatter(
+                x=x, y=y, name=name,
+                mode="lines+markers+text",                 
+                line=dict(width=2, color=base_colors[i % len(base_colors)]),
+                marker=dict(size=6),
+                texttemplate="%{y:.1f}",                   
+                textposition="top center",                 
+                textfont=dict(size=10),
+                hovertemplate="월=%{x}<br>값=%{y:.1f}<extra></extra>",
+            ),
+            row=1, col=1
+        )
 
-    # 공통 범위 계산
-    both = np.r_[y_n2[np.isfinite(y_n2)], y_pw[np.isfinite(y_pw)]]
-    ymin_all, ymax_all = (np.nanmin(both), np.nanmax(both)) if both.size else (np.nan, np.nan)
+    # (2) 아래: 질소/전력 (원값 그대로)
+    fig.add_trace(
+        go.Scatter(
+            x=x, y=y_n2, name=n2_label,
+            mode="lines+markers+text",                    
+            line=dict(width=2.4, color="#FFD400"), marker=dict(size=7),
+            texttemplate="%{y:.1f}",
+            textposition="top center",                 
+            textfont=dict(size=10),
+            hovertemplate="월=%{x}<br>값=%{y:.1f}<extra></extra>",
+        ),
+        row=2, col=1
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x, y=y_pw, name=pw_label,
+            mode="lines+markers+text",                    # ← text 추가
+            line=dict(width=2.4, color="#BB2649"), marker=dict(size=7),
+            texttemplate="%{y:.1f}",
+            textposition="top center",                 # ← 전력은 아래(겹침 완화)
+            textfont=dict(size=10),
+            hovertemplate="월=%{x}<br>값=%{y:.1f}<extra></extra>",
+        ),
+        row=2, col=1
+    )
 
-    # 밴드 좌표로 변환
-    y_n2_band = to_band_shared(y_n2, band_lo, band_hi, ymin_all, ymax_all)
-    y_pw_band = to_band_shared(y_pw, band_lo, band_hi, ymin_all, ymax_all)
-
-    # 색상(라인만 색, 라벨은 검정)
-    c_n2 = "#FFD400"  # 질소(노랑)
-    c_pw = "#BB2649"  # 전력(버건디)
-
-    # 밴드 라인 그리기
-    ln_n2, = ax.plot(x, y_n2_band, marker="o", linewidth=2.4, color=c_n2, zorder=4, label=n2_label)
-    ln_pw, = ax.plot(x, y_pw_band, marker="o", linewidth=2.4, color=c_pw, zorder=4, label=pw_label)
-
-    # 수치 라벨은 '항상 검정'
-    from matplotlib import patheffects as pe
-    pe_white = [pe.withStroke(linewidth=2, foreground="white")]  # 가독성(선택)
-
-    for xi, (vy, vyb) in enumerate(zip(y_n2, y_n2_band)):
-        if np.isfinite(vy):
-            ax.text(x[xi], vyb, f"{vy:.1f}", ha="center", va="bottom",
-                    fontsize=9, color="#000000", clip_on=False, zorder=5, path_effects=pe_white)
-
-    for xi, (vy, vyb) in enumerate(zip(y_pw, y_pw_band)):
-        if np.isfinite(vy):
-            ax.text(x[xi], vyb, f"{vy:.1f}", ha="center", va="top",
-                    fontsize=9, color="#000000", clip_on=False, zorder=5, path_effects=pe_white)
-
-    # 밴드 경계 가이드(선택)
-    ax.hlines([band_lo, band_hi], x[0]-0.2, x[-1]+0.2, lw=1, alpha=0.15, zorder=1)
-
-    # 범례용 핸들 추가(왼쪽 표/legend 렌더에 사용)
-    lines += [ln_n2, ln_pw]
-    labels += [n2_label, pw_label]
-
-    # 끝값 잘림 방지(밴드 라벨 보호)
-    ax.margins(x=0.06)
+    fig.update_layout(uniformtext_minsize=9, uniformtext_mode="hide")
 
 
+    # --- 레이아웃/축/범례 ---
+    fig.update_layout(
+        template="plotly_white",
+        margin=dict(l=10, r=20, t=60, b=40),
+        font=dict(family="Noto Sans KR", size=40),
+        hovermode="x unified",
+        legend=dict(
+            orientation="v", x=-0.15, y=1.0, xanchor="left", yanchor="top",
+            bgcolor="rgba(255,255,255,0.7)"
+        )
+    )
+    fig.update_yaxes(domain=[0.00, 0.25], row=2, col=1)   
+    fig.update_yaxes(domain=[0.24, 1.00], row=1, col=1) 
+
+
+    # (B) 아래 패널 내에서 하단 정렬 느낌
+    r_vals = np.r_[y_n2[np.isfinite(y_n2)], y_pw[np.isfinite(y_pw)]]
+    rmin, rmax = float(np.nanmin(r_vals)), float(np.nanmax(r_vals))
+    span = max(rmax - rmin, 1e-9)
+    fig.update_yaxes(range=[rmin - span*0.05, rmax + span*1.20], row=2, col=1)
 
 
 
-
-
-
-
-    
-
-
-    # 범례 컬럼
-    ax_leg.set_xlim(0, 1); ax_leg.set_ylim(0, len(labels))
-    ax_leg.axis('off')
-    
-    row_h = 1.0
-    y0 = len(labels) - 0.5
-    for i, (ln, lab) in enumerate(zip(lines, labels)):
-        y_pos = y0 - i*row_h
-
-        ax_leg.plot([0.02, 0.12], [y_pos, y_pos],
-                    color=ln.get_color(), linewidth=3, solid_capstyle='round')
-        ax_leg.plot([0.07], [y_pos], marker='o', markersize=6,
-                    color=ln.get_color())
-        ax_leg.text(0.16, y_pos, lab, va='center', ha='left', fontsize=8)
-
-    plt.tight_layout()
-    st.pyplot(fig, use_container_width=True)
-
+    st.plotly_chart(fig, use_container_width=True)
 
 # =========================
 #월 평균 클레임 지급액
@@ -999,7 +892,131 @@ with t6:
 #영업외 비용 내역
 # =========================
 with t7:
-    pass
+    st.markdown("<h4>7) 영업외 비용 (최근 3개월)</h4>", unsafe_allow_html=True)
+
+    # 데이터 로드 (secrets)
+    csv_src = st.secrets['sheets']['f_49']
+    df_raw = modules.load_nonop_cost_csv(csv_src)
+
+    # 표 생성: 구분2 섹션(기타비용/금융비용) × 구분4 세부항목
+    df_tbl = modules.create_nonop_cost_3month_by_g2_g4(
+        year=this_year,
+        month=current_month,
+        data=df_raw
+    )
+
+    # 스타일
+    num_cols = [c for c in df_tbl.columns if c not in ("구분","계정","_row_type")]
+
+    def _fmt(x):
+        if isinstance(x, (int, float)):
+            return f"{x:,.0f}"
+        return x
+
+    sty = (
+        df_tbl.drop(columns=[c for c in ["_row_type"] if c in df_tbl.columns])
+             .style
+             .format(_fmt, subset=pd.IndexSlice[:, num_cols])
+             .set_properties(**{"text-align":"right", "font-family":"Noto Sans KR"})
+             .set_properties(subset=pd.IndexSlice[:, ["구분","계정"]], **{"text-align":"left"})
+    )
+
+    right_idx = df_tbl.index[
+    df_tbl["계정"].astype(str).str.strip().isin(["고철매각작업비","기타"])
+    ]
+    sty = sty.set_properties(
+        subset=(right_idx, ["계정"]),
+        **{"text-align":"right", "padding-right":"12px"}
+    )
+
+    
+
+    # 행 하이라이트: 섹션 합계/총계 굵게+회색, 세부항목은 기본
+    def _row_style(row):
+        t = df_tbl.loc[row.name, "_row_type"]
+        if t == "section_total":
+            return ["font-weight:600; background-color:#f5f5f5"] * len(row)
+        if t == "grand_total":
+            return ["font-weight:700; background-color:#ededed"] * len(row)
+        return [""] * len(row)
+    
+    sty = sty.apply(_row_style, axis=1)
+
+    styles_prod = []
+
+    # 잡손실 기타 고철매각작업비 행 작업
+    styles_prod.append({
+            'selector': 'tbody tr:nth-child(6) td:nth-child(2)',
+            'props': [('border-bottom', '2px solid white !important')]
+            
+    })
+
+    styles_prod.append({
+            'selector': 'tbody tr:nth-child(7) td:nth-child(2)',
+            'props': [('border-bottom', '2px solid white !important')]
+            
+    })
+
+    #기타비용 위 빈 행들 작업
+    for i in range(1, 11):
+        styles_prod.append({
+        "selector": f"tbody tr:nth-child({i}) td:nth-of-type(1)",
+        "props": [("border-bottom", "2px solid white !important")]
+    })
+        
+    #금융비용 위 빈 행들 작업
+    for i in range(12, 19):
+        styles_prod.append({
+        "selector": f"tbody tr:nth-child({i}) td:nth-of-type(1)",
+        "props": [("border-bottom", "2px solid white !important")]
+    })
+        
+    
+    styles_prod.append({
+            'selector': 'tbody tr:nth-child(11)',
+            'props': [('border-bottom', '3px solid gray !important')]
+            
+    })
+
+    for i in range(1, 12):
+        styles_prod.append({
+        "selector": f"tbody tr:nth-child({i})",
+        "props": [("border-right", "3px solid gray !important")]
+    })
+        
+    for i in range(12, 21):
+        styles_prod.append({
+        "selector": f"tbody tr:nth-child({i})",
+        "props": [("border-right", "3px solid gray !important")]
+    })
+        
+    styles_prod.append({
+            'selector': 'tbody tr:nth-child(20)',
+            'props': [('border-bottom', '3px solid gray !important')]
+            
+    })
+    
+
+    sty = sty.set_table_styles(styles_prod, overwrite=False)
+
+     
+    # 음수는 빨간색
+    def _neg_red(v):
+        try:
+            return "color:#d62828" if float(v) < 0 else ""
+        except Exception:
+            return ""
+    for c in num_cols:
+        sty = sty.applymap(_neg_red, subset=pd.IndexSlice[:, [c]])
+
+
+    if hasattr(sty, "hide"):          
+        sty = sty.hide(axis="index")  # 인덱스와 인덱스 헤더 셀 모두 제거
+
+
+    table_html = sty.to_html(index=False)
+    st.markdown(f"<div style='display:flex; justify-content:center;'>{table_html}</div>", unsafe_allow_html=True)
+    
 
 # Footer
 st.markdown("""
