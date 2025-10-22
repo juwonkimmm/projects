@@ -144,7 +144,6 @@ modules.create_sidebar()
 this_year = st.session_state['year']
 current_month = st.session_state['month']
 
-st.image("logo.gif", width=200)
 st.markdown(f"## {this_year}년 {current_month}월 매출 분석")
 
 t1, t2, t3 = st.tabs(['계획대비 매출실적', '판매구성','전체  생산실적'])

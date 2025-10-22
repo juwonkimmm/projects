@@ -103,7 +103,6 @@ modules.create_sidebar()
 this_year = st.session_state['year']
 current_month = st.session_state['month']
 
-st.image("logo.gif", width=200)
 st.markdown(f"## {this_year}년 {current_month}월 재고 분석")
 
 t1, t2, t3, t4 = st.tabs(['재고자산 회전율', '연령별 재고현황', '총 재고 및 장기재고 현황', '등급별 재고현황'])
