@@ -247,6 +247,12 @@ with t1:
     st.markdown(unit, unsafe_allow_html=True)
 
 
+    try:
+        mpl.rcParams['font.family'] = 'Malgun Gothic'  # Windows 한글
+        mpl.rcParams['axes.unicode_minus'] = False
+    except Exception:
+        pass
+
 
     df_plot = df_table.copy()
     months  = list(df_plot.columns)          # x축 라벨
@@ -269,41 +275,44 @@ with t1:
             text=[f"{v:.1f}" if np.isfinite(v) else "" for v in y],
             textposition=textpos,
             textfont=dict(size=11),
-            hovertemplate="월=%{x}<br>값=%{y:.1f}<extra></extra>",
+            hovertemplate="값=%{y:.1f}<extra></extra>",
         ))
+    fig.update_traces(line=dict(width=3.5))
 
-    # ----- 레이아웃 (왼쪽 표형 범례, y축 라벨 숨김, 스타일) -----
+
+    # ----- 레이아웃 -----
+
+    fig.update_layout(margin=dict(r=120)) 
+
     fig.update_layout(
         title="[포항]",
-        template="plotly_white",
-        margin=dict(l=150, r=20, t=40, b=40),  # 왼쪽 범례 자리
-        hovermode="x unified",
-        font=dict(family="Noto Sans KR", size=12),
-
-        # 범례를 왼쪽 '바깥'에 세로로
         legend=dict(
             orientation="v",
-            x=-0.15, y=1.0, xanchor="left", yanchor="top",
-            bgcolor="rgba(255,255,255,0.8)",
-            borderwidth=1
+            x=1.02, y=0.5,              
+            xanchor="left", yanchor="middle",
+            bgcolor="rgba(255,255,255,0.85)",
+            
+            borderwidth=1,
+            font=dict(size=13),
+            itemsizing="constant",
+            itemwidth=90
         )
     )
 
-    # 축/그리드: Matplotlib 설정과 유사하게
+
     fig.update_xaxes(
         title_text=None,
         tickmode="array", tickvals=x, ticktext=x,
-        showgrid=False  # 필요 시 True
+        showgrid=False  
     )
     fig.update_yaxes(
         title_text=None,
-        showticklabels=False,          # y축 눈금 라벨 숨김
+        showticklabels=False,         
         zeroline=False,
         showgrid=True,
-        gridcolor="rgba(0,0,0,0.18)"   # y 그리드 옅게
+        gridcolor="rgba(0,0,0,0.18)"   
     )
 
-    # Streamlit
     st.plotly_chart(fig, use_container_width=True)
 
 
@@ -348,18 +357,18 @@ with t2:
         .format({col: "{:.1f}" for col in numeric_cols}, na_rep="-")
         .hide(axis="index")
 
-        # 1) 첫 번째 열(포항) 바디 셀 강조
+
         .set_properties(
             subset=[df_show.columns[0]],
             **{
                 "text-align": "left",
                 "font-weight": "600",
                 "background-color": "#f0f0f0"  # 연한 하늘색 (원하는 색으로 변경)
-                # "border-left": "3px solid #3B82F6"  # 왼쪽 굵은 포인트 라인
+                
             }
         )
 
-        # 2) 헤더 셀(포항)도 동일 계열로 강조
+
         .set_table_styles([
             {
                 "selector": "th.col_heading.level0.col0",  # 첫 번째 컬럼 헤더
@@ -370,7 +379,7 @@ with t2:
                 ],
             },
             {
-                "selector": "th.col_heading",  # 다른 헤더는 가운데 정렬 유지
+                "selector": "th.col_heading",  
                 "props": [("text-align", "center")],
             },
         ])
@@ -392,22 +401,13 @@ with t2:
     st.markdown(unit, unsafe_allow_html=True)
 
 
+    try:
+        mpl.rcParams['font.family'] = 'Malgun Gothic'  # Windows 한글
+        mpl.rcParams['axes.unicode_minus'] = False
+    except Exception:
+        pass
 
 
-    # df_plot = df_table.copy()  # index: 항목들, columns: '2월'...'N월'
-    # months = list(df_plot.columns)
-    # x = np.arange(len(months))
-
-    # fig = plt.figure(figsize=(12, 4))
-
-    # gs = fig.add_gridspec(1, 2, width_ratios=[1.8, 8.2], wspace=0.02)
-    # ax_leg = fig.add_subplot(gs[0, 0])
-    # ax     = fig.add_subplot(gs[0, 1])
-
-    # # ----- 본 그래프 -----
-    # lines = []
-    # labels = []
-    # for item_name, row in df_plot.iterrows():
     df_plot = df_table.copy()
     months  = list(df_plot.columns)      # x축 라벨
     x       = months                     # 카테고리형 x
@@ -429,30 +429,38 @@ with t2:
             text=[f"{v:.1f}" if np.isfinite(v) else "" for v in y],
             textposition=textpos,
             textfont=dict(size=11),
-            hovertemplate="월=%{x}<br>값=%{y:.1f}<extra></extra>",
+            hovertemplate="값=%{y:.1f}<extra></extra>",
         ))
 
-    # ----- 레이아웃 / 축 -----
+    fig.update_traces(line=dict(width=3.5))
+
+
+    # ----- 레이아웃 (왼쪽 표형 범례, y축 라벨 숨김, 스타일) -----
+    # 1) 오른쪽 여백 확보 (범례 박스가 들어갈 자리)
+    fig.update_layout(margin=dict(r=120))  # 120~200 사이에서 조절
+
+    # 2) 범례를 오른쪽 바깥 가운데에 배치
     fig.update_layout(
         title="[충주1]",
-        template="plotly_white",
-        margin=dict(l=150, r=20, t=50, b=40),   # 왼쪽 범례 자리
-        hovermode="x unified",
-        font=dict(family="Noto Sans KR", size=12),
-        legend=dict(                            # 왼쪽 '표형' 범례
+        legend=dict(
             orientation="v",
-            x=-0.15, y=1.0, xanchor="left", yanchor="top",
-            bgcolor="rgba(255,255,255,0.8)",
-            borderwidth=1
+            x=1.02, y=0.5,              # x>1 => 플롯 영역 '바깥' 오른쪽
+            xanchor="left", yanchor="middle",
+            bgcolor="rgba(255,255,255,0.85)",
+            
+            borderwidth=1,
+            font=dict(size=13),
+            itemsizing="constant",
+            itemwidth=90
         )
     )
 
-    # x축: 카테고리 라벨 그대로
+    # x축
     fig.update_xaxes(
         tickmode="array", tickvals=x, ticktext=x,
         showgrid=False
     )
-    # y축: 라벨 숨김 + 옅은 그리드
+    # y축
     fig.update_yaxes(
         showticklabels=False,
         zeroline=False,
@@ -460,17 +468,17 @@ with t2:
         gridcolor="rgba(0,0,0,0.18)"
     )
 
-    # (선택) 여백 살짝: matplotlib의 ax.margins 유사 효과
-    # 필요시 y범위 패딩 주기
+
     all_vals = pd.to_numeric(df_plot.values.ravel(), errors="coerce").astype(float)
     finite = np.isfinite(all_vals)
     if finite.any():
         ymin = float(np.nanmin(all_vals[finite])); ymax = float(np.nanmax(all_vals[finite]))
-        pad = max((ymax - ymin) * 0.15, 1e-9)     # matplotlib의 y=0.15 마진 유사
+        pad = max((ymax - ymin) * 0.15, 1e-9)     
         fig.update_yaxes(range=[ymin - pad, ymax + pad])
 
     # Streamlit 출력
     st.plotly_chart(fig, use_container_width=True)
+
 
 # =========================
 #사용량 원단위 추이_충주2
@@ -507,18 +515,18 @@ with t3:
         .format({col: "{:.1f}" for col in numeric_cols}, na_rep="-")
         .hide(axis="index")
 
-        # 1) 첫 번째 열(포항) 바디 셀 강조
+       
         .set_properties(
             subset=[df_show.columns[0]],
             **{
                 "text-align": "left",
                 "font-weight": "600",
-                "background-color": "#f0f0f0"  # 연한 하늘색 (원하는 색으로 변경)
-                # "border-left": "3px solid #3B82F6"  # 왼쪽 굵은 포인트 라인
+                "background-color": "#f0f0f0"  
+
             }
         )
 
-        # 2) 헤더 셀(포항)도 동일 계열로 강조
+        
         .set_table_styles([
             {
                 "selector": "th.col_heading.level0.col0",  # 첫 번째 컬럼 헤더
@@ -529,7 +537,7 @@ with t3:
                 ],
             },
             {
-                "selector": "th.col_heading",  # 다른 헤더는 가운데 정렬 유지
+                "selector": "th.col_heading", 
                 "props": [("text-align", "center")],
             },
         ])
@@ -558,23 +566,11 @@ with t3:
     except Exception:
         pass
 
-    # df_plot = df_table.copy()  
-    # months = list(df_plot.columns)
-    # x = np.arange(len(months))
 
-    # fig = plt.figure(figsize=(12, 1.8))
 
-    # gs = fig.add_gridspec(1, 2, width_ratios=[1.8, 7], wspace=0.02)
-    # ax_leg = fig.add_subplot(gs[0, 0])
-    # ax     = fig.add_subplot(gs[0, 1])
-
-    # # ----- 본 그래프 -----
-    # lines = []
-    # labels = []
-    # for item_name, row in df_plot.iterrows():
-
-    df_plot = df_table.copy()                     # index: 항목, columns: '2월'...'N월'
-    months  = list(df_plot.columns)               # x축 카테고리
+    # 준비
+    df_plot = df_table.copy()                     
+    months  = list(df_plot.columns)               
     x       = months
 
     fig = go.Figure()
@@ -594,25 +590,29 @@ with t3:
             text=[f"{v:.1f}" if np.isfinite(v) else "" for v in y],
             textposition=textpos,
             textfont=dict(size=11),
-            hovertemplate="월=%{x}<br>값=%{y:.1f}<extra></extra>",
+            hovertemplate="값=%{y:.1f}<extra></extra>",
         ))
+    
+    fig.update_traces(line=dict(width=3.5))
 
-    # ----- 레이아웃/축 -----
+
+    # ----- 레이아웃 (왼쪽 표형 범례, y축 라벨 숨김, 스타일) -----
+    # 1) 오른쪽 여백 확보 (범례 박스가 들어갈 자리)
+    fig.update_layout(margin=dict(r=120))  # 120~200 사이에서 조절
+
+    # 2) 범례를 오른쪽 바깥 가운데에 배치
     fig.update_layout(
         title="[충주2]",
-        template="plotly_white",
-        height=260,                                 # figsize(12, 1.8) 느낌으로 낮게
-        margin=dict(l=150, r=20, t=50, b=30),       # 왼쪽 범례 자리
-        hovermode="x unified",
-        uniformtext_minsize=9, uniformtext_mode="hide",
-        font=dict(family="Noto Sans KR", size=12),
-
-        # 왼쪽 ‘표형’ 범례 (세로, 바깥)
         legend=dict(
             orientation="v",
-            x=-0.15, y=1.0, xanchor="left", yanchor="top",
-            bgcolor="rgba(255,255,255,0.8)",
-            borderwidth=1
+            x=1.02, y=0.5,              # x>1 => 플롯 영역 '바깥' 오른쪽
+            xanchor="left", yanchor="middle",
+            bgcolor="rgba(255,255,255,0.85)",
+            
+            borderwidth=1,
+            font=dict(size=13),
+            itemsizing="constant",
+            itemwidth=90
         )
     )
 
@@ -640,6 +640,7 @@ with t3:
     # Streamlit 출력
     st.plotly_chart(fig, use_container_width=True)
 
+
 # =========================
 #단가 추이
 # =========================
@@ -660,7 +661,7 @@ with t4:
         month=current_month,
         data=df_src,
         start_month=2,
-        round_digits=1,   # 소수 첫째자리 반올림
+        round_digits=1,   
     )
 
     # ➜ 인덱스를 컬럼으로 승격 (헤더 한 줄)
@@ -759,7 +760,7 @@ with t4:
                 texttemplate="%{y:.1f}",                   
                 textposition="top center",                 
                 textfont=dict(size=10),
-                hovertemplate="월=%{x}<br>값=%{y:.1f}<extra></extra>",
+                hovertemplate="값=%{y:.1f}<extra></extra>",
             ),
             row=1, col=1
         )
@@ -773,42 +774,53 @@ with t4:
             texttemplate="%{y:.1f}",
             textposition="top center",                 
             textfont=dict(size=10),
-            hovertemplate="월=%{x}<br>값=%{y:.1f}<extra></extra>",
+            hovertemplate="값=%{y:.1f}<extra></extra>",
         ),
         row=2, col=1
     )
     fig.add_trace(
         go.Scatter(
             x=x, y=y_pw, name=pw_label,
-            mode="lines+markers+text",                    # ← text 추가
+            mode="lines+markers+text",                   
             line=dict(width=2.4, color="#BB2649"), marker=dict(size=7),
             texttemplate="%{y:.1f}",
-            textposition="top center",                 # ← 전력은 아래(겹침 완화)
+            textposition="top center",                
             textfont=dict(size=10),
-            hovertemplate="월=%{x}<br>값=%{y:.1f}<extra></extra>",
+            hovertemplate="값=%{y:.1f}<extra></extra>",
         ),
         row=2, col=1
     )
 
+    fig.update_traces(line=dict(width=3.5))
+
+
     fig.update_layout(uniformtext_minsize=9, uniformtext_mode="hide")
+    
 
 
     # --- 레이아웃/축/범례 ---
+
+    fig.update_layout(margin=dict(r=120))  
+
+ 
     fig.update_layout(
-        template="plotly_white",
-        margin=dict(l=10, r=20, t=60, b=40),
-        font=dict(family="Noto Sans KR", size=40),
-        hovermode="x unified",
+
         legend=dict(
-            orientation="v", x=-0.15, y=1.0, xanchor="left", yanchor="top",
-            bgcolor="rgba(255,255,255,0.7)"
+            orientation="v",
+            x=1.02, y=0.5,              
+            xanchor="left", yanchor="middle",
+            bgcolor="rgba(255,255,255,0.85)",
+            
+            borderwidth=1,
+            font=dict(size=13),
+            itemsizing="constant",
+            itemwidth=90
         )
     )
-    fig.update_yaxes(domain=[0.00, 0.25], row=2, col=1)   
-    fig.update_yaxes(domain=[0.24, 1.00], row=1, col=1) 
 
 
-    # (B) 아래 패널 내에서 하단 정렬 느낌
+
+    # 아래 패널 내 하단 정렬
     r_vals = np.r_[y_n2[np.isfinite(y_n2)], y_pw[np.isfinite(y_pw)]]
     rmin, rmax = float(np.nanmin(r_vals)), float(np.nanmax(r_vals))
     span = max(rmax - rmin, 1e-9)
@@ -817,6 +829,7 @@ with t4:
 
 
     st.plotly_chart(fig, use_container_width=True)
+
 
 # =========================
 #월 평균 클레임 지급액
