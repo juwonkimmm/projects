@@ -1080,20 +1080,20 @@ with t2:
                
         
         # 굵은 가로 경계선(데이터 구간, +1 보정)
-        styles_def.extend([
-            {'selector': f'tbody tr:nth-child({r + 2})',
-             'props': [('border-bottom', '3px solid #666 !important')]}
-            for r in thick_rows_data_zero_based
-        ])
+        # styles_def.extend([
+        #     {'selector': f'tbody tr:nth-child({r + 2})',
+        #      'props': [('border-bottom', '3px solid #666 !important')]}
+        #     for r in thick_rows_data_zero_based
+        # ])
 
         # 강조 컬럼(연회색)
-        hl_cols = [f"{str(year - 1)[-2:]}년 월평균", f"{str(year)[-2:]}년 목표", '합계', '월평균']
+    #     hl_cols = [f"{str(year - 1)[-2:]}년 월평균", f"{str(year)[-2:]}년 목표", '합계', '월평균']
 
-        # reset_index() 안 쓰는 렌더러로 출력
-        display_styled_df_keep_index(df_inline, styles=styles_def, highlight_cols=hl_cols, fmt_int=True)
+    #     # reset_index() 안 쓰는 렌더러로 출력
+    #     display_styled_df_keep_index(df_inline, styles=styles_def, highlight_cols=hl_cols, fmt_int=True)
 
-    except Exception as e:
-        st.error(f"포항 부적합 표 생성 중 오류가 발생했습니다: {e}")
+    # except Exception as e:
+    #     st.error(f"포항 부적합 표 생성 중 오류가 발생했습니다: {e}")
 
 # =========================
 # 부적합 발생내역 - 충주 1,2공장
