@@ -211,7 +211,7 @@ st.divider()
 
 with t1:
     st.markdown("<h4>1) 손익 </h4>", unsafe_allow_html=True)
-    st.markdown("<h5> 손익 연결</h4>", unsafe_allow_html=True)
+    # st.markdown("<h5> 손익 연결</h4>", unsafe_allow_html=True)
     st.markdown("<div style='text-align:right; font-size:13px; color:#666;'>[단위: 톤, 백만원, %]</div>", unsafe_allow_html=True)
 
     try:
