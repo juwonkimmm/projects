@@ -401,7 +401,7 @@ with t1:
                 'props': [('border-right','2px solid gray !important')]
                
             }
-            for r in (5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24)
+            for r in (5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23)
         ]
 
         styles += spacer_rules2
