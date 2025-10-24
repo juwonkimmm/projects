@@ -211,7 +211,7 @@ st.divider()
 
 with t1:
     st.markdown("<h4>1) 손익 </h4>", unsafe_allow_html=True)
-    # st.markdown("<h5> 손익 연결</h4>", unsafe_allow_html=True)
+    st.markdown("<h5> 손익 연결</h4>", unsafe_allow_html=True)
     st.markdown("<div style='text-align:right; font-size:13px; color:#666;'>[단위: 톤, 백만원, %]</div>", unsafe_allow_html=True)
 
     try:
@@ -369,7 +369,7 @@ with t1:
 
 
             {'selector': 'tbody td:nth-child(4) td:nth-child(1)',
-            'props': [('border-top','2px solid gray !important')]},
+            'props': [('border-top','3px solid gray !important')]},
 
 
             {'selector': 'tbody td:nth-child(1)',
@@ -398,7 +398,7 @@ with t1:
         spacer_rules2 = [
             {
                 'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
-                'props': [('border-right','2px solid gray !important')]
+                'props': [('border-right','3px solid gray !important')]
                
             }
             for r in (5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23)
@@ -423,7 +423,7 @@ with t1:
         spacer_rules3 = [
             {
                 'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
-                'props': [('border-top','2px solid gray !important')]
+                'props': [('border-top','3px solid gray !important')]
                
             }
 
@@ -435,7 +435,7 @@ with t1:
         spacer_rules3_1 = [
             {
                 'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
-                'props': [('border-top','2px solid gray !important')]
+                'props': [('border-top','3px solid gray !important')]
                
             }
 
@@ -480,7 +480,7 @@ with t1:
         spacer_rules5 = [
             {
                 'selector': f'tbody tr:nth-child(2) td:nth-child({j})',
-                'props': [('border-top','2px solid gray ')]
+                'props': [('border-top','3px solid gray ')]
                
             }
 
@@ -493,7 +493,7 @@ with t1:
         spacer_rules5 = [
             {
                 'selector': f'tbody tr:nth-child(3) td:nth-child({j})',
-                'props': [('border-top','2px solid gray ')]
+                'props': [('border-top','3px solid gray ')]
                
             }
 
@@ -505,7 +505,7 @@ with t1:
         spacer_rules5 = [
             {
                 'selector': f'tbody tr:nth-child(4) td:nth-child({j})',
-                'props': [('border-top','2px solid gray ')]
+                'props': [('border-top','3px solid gray ')]
                
             }
 
@@ -518,7 +518,7 @@ with t1:
         spacer_rules5 = [
             {
                 'selector': f'tbody tr:nth-child({r}) td:nth-child({j})',
-                'props': [('border-right','2px solid gray ')]
+                'props': [('border-right','3px solid gray ')]
                
             }
 
@@ -531,7 +531,7 @@ with t1:
         spacer_rules5 = [
             {
                 'selector': f'tbody tr:nth-child(1) td:nth-child(5)',
-                'props': [('border-right','2px solid gray ')]
+                'props': [('border-right','3px solid gray ')]
                
             }
 
@@ -553,7 +553,7 @@ with t1:
         spacer_rules5 = [
             {
                 'selector': f'tbody tr:nth-child({j}) td:nth-child(10)',
-                'props': [('border-right','2px solid gray ')]
+                'props': [('border-right','3px solid gray ')]
                
             }
 
@@ -565,7 +565,7 @@ with t1:
         spacer_rules5 = [
             {
                 'selector': f'tbody tr:nth-child(2) td:nth-child(5)',
-                'props': [('border-right','2px solid gray ')],
+                'props': [('border-right','3px solid gray ')],
                 
             }
 
@@ -578,7 +578,7 @@ with t1:
             {
                 
                 'selector': f'tbody tr:nth-child(2) td:nth-child(10)',
-                'props': [('border-left','2px solid gray ')]
+                'props': [('border-left','3px solid gray ')]
                
             }
 
@@ -764,7 +764,7 @@ with t1:
         spacer_rules2 = [
                     {
                         'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
-                        'props': [('border-left','2px solid gray ')],
+                        'props': [('border-left','3px solid gray ')],
                     
                     }
                     for r in (4,5,6,7,8,10,11,12,14,15,16)
@@ -788,7 +788,7 @@ with t1:
         spacer_rules3 = [
                     {
                         'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
-                        'props': [('border-top','2px solid gray ')],
+                        'props': [('border-top','3px solid gray ')],
                     
                     }
                     for r in (9,10,13,14,17,18)
@@ -810,7 +810,7 @@ with t1:
         spacer_rules5 = [
                     {
                         'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
-                        'props': [('border-bottom','2px solid gray ')],
+                        'props': [('border-bottom','3px solid gray ')],
                     
                     }
                     for r in (3,9,13,17)
@@ -821,7 +821,7 @@ with t1:
         spacer_rules5 = [
                     {
                         'selector': f'tbody tr:nth-child(3) td:nth-child(2)',
-                        'props': [('border-bottom','2px solid gray ')],
+                        'props': [('border-bottom','3px solid gray ')],
                     
                     }
 
@@ -850,7 +850,7 @@ with t1:
         spacer_rules5 = [
             {
                 'selector': f'tbody tr:nth-child(2) td:nth-child({j})',
-                'props': [('border-top','2px solid gray ')]
+                'props': [('border-top','3px solid gray ')]
                
             }
 
@@ -863,7 +863,7 @@ with t1:
         spacer_rules5 = [
             {
                 'selector': f'tbody tr:nth-child(3) td:nth-child({j})',
-                'props': [('border-top','2px solid gray ')]
+                'props': [('border-top','3px solid gray ')]
                
             }
 
@@ -875,7 +875,7 @@ with t1:
         spacer_rules5 = [
             {
                 'selector': f'tbody tr:nth-child(4) td:nth-child({j})',
-                'props': [('border-top','2px solid gray ')]
+                'props': [('border-top','3px solid gray ')]
                
             }
             # for r in (4,5,8,14,15)
@@ -889,7 +889,7 @@ with t1:
         spacer_rules5 = [
             {
                 'selector': f'tbody tr:nth-child({r}) td:nth-child({j})',
-                'props': [('border-right','2px solid gray ')]
+                'props': [('border-right','3px solid gray ')]
                
             }
 
@@ -902,7 +902,7 @@ with t1:
         spacer_rules5 = [
             {
                 'selector': f'tbody tr:nth-child(1) td:nth-child(5)',
-                'props': [('border-right','2px solid gray ')]
+                'props': [('border-right','3px solid gray ')]
                
             }
 
@@ -924,7 +924,7 @@ with t1:
         spacer_rules5 = [
             {
                 'selector': f'tbody tr:nth-child({j}) td:nth-child(10)',
-                'props': [('border-right','2px solid gray ')]
+                'props': [('border-right','3px solid gray ')]
                
             }
 
@@ -936,7 +936,7 @@ with t1:
         spacer_rules5 = [
             {
                 'selector': f'tbody tr:nth-child(2) td:nth-child(5)',
-                'props': [('border-right','2px solid gray ')],
+                'props': [('border-right','3px solid gray ')],
                 
             }
 
@@ -949,7 +949,7 @@ with t1:
             {
                 
                 'selector': f'tbody tr:nth-child(2) td:nth-child(10)',
-                'props': [('border-left','2px solid gray ')]
+                'props': [('border-left','3px solid gray ')]
                
             }
 
@@ -1035,6 +1035,7 @@ with t1:
 
     except Exception as e:
         st.error(f"재무상태표 생성 중 오류: {e}")
+##
 
 
 
