@@ -1172,9 +1172,6 @@ with t1:
             {'selector': 'tbody tr:nth-child(n+3) td', 'props': [('text-align','right'), ('padding','8px 10px')]},
             {'selector': 'tbody tr:nth-child(n+3) td:nth-child(2)', 'props': [('text-align','center')]},
         ]
-        styles += css_overlay_text(3, 1, "회")
-        styles += css_overlay_text(4, 1, "전")
-        styles += css_overlay_text(5, 1, "일")
 
 
 
