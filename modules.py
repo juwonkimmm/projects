@@ -1092,10 +1092,7 @@ def create_material_usage_table_chungju2(
 
 
 #####단가추이#####
-# modules.py
-import re
-import numpy as np
-import pandas as pd
+
 from typing import Optional, List
 
 def _to_month_any(s) -> float:
@@ -1740,7 +1737,7 @@ def clean_cashflow_df(df_raw: pd.DataFrame) -> pd.DataFrame:
     return df.rename(columns={item_col: "구분", comp_col: "회사"})
 
 
-def create_cashflow_snapshot_by_gubun(year: int, month: int, data: pd.DataFrame) -> pd.DataFrame:
+def create_cashflow_by_gubun(year: int, month: int, data: pd.DataFrame) -> pd.DataFrame:
     df = clean_cashflow_df(data)
     companies = ["본사", "남통", "천진", "태국"]
 
@@ -1762,7 +1759,7 @@ def create_cashflow_snapshot_by_gubun(year: int, month: int, data: pd.DataFrame)
             .groupby("구분", sort=False)["실적"]
             .sum()                         # 1차 집계
         )
-        # ▶ 중복 방지: 동일 구분이 또 있으면 합산(인덱스 유일화)
+        # 
         if s.index.duplicated().any():
             s = s.groupby(level=0).sum()
         return s
@@ -1807,7 +1804,7 @@ def create_cashflow_snapshot_by_gubun(year: int, month: int, data: pd.DataFrame)
     return out
 
 
-# ====================== 재무상태표(연결) ======================
+# ====================== 재무상태표 ======================
 
 
 import pandas as pd
@@ -2717,18 +2714,7 @@ def create_item_change_cost_from_flat(
     month: int,
     col_order=("계","CHQ","CD","STS","BTB","PB","내수","수출"),
 ):
-    """
-    CSV 실데이터 구조 전용(수정원가기준 손익_별도):
-    - 구분2: 지표명  (매출액, 판매량, X등급 및 재고평가, 영업이익, …)
-    - 구분3: 열 항목 (계, CHQ, CD, STS, BTB, PB, 내수, 수출)
-    - 구분4: 사용 안함
-    계산:
-      한계이익 = 영업이익 + X등급 및 재고평가
-      %(영업)  = 영업이익 / 매출액 * 100
-      %(한계)  = 한계이익 / 매출액 * 100
-    반환: 행 = ["매출액","판매량","X등급 및 재고평가","영업이익","%(영업)","한계이익","%(한계)"]
-          열 = col_order에 존재하는 열만 (데이터에 있지 않은 열은 자동 제외)
-    """
+
     # ---- 정리 ----
     df = data.copy()
     for c in ["구분1","구분2","구분3","구분4"]:
@@ -2789,3 +2775,176 @@ def create_item_change_cost_from_flat(
     out.iloc[:, :] = out.where(pd.notnull(out), "")
 
     return out
+
+
+## 제품수불표
+
+# === 제품수불표: 연산 전용 ===
+import pandas as pd
+import numpy as np
+import re
+
+def _pf_to_num(s: pd.Series) -> pd.Series:
+    s = s.fillna("").astype(str)
+    s = s.str.replace(",", "", regex=False).str.replace(r"\s+", "", regex=True)
+    v = pd.to_numeric(s, errors="coerce")
+    return v.fillna(0.0)
+
+def _clean_product_flow(df_raw: pd.DataFrame) -> pd.DataFrame:
+    need = {"구분1","구분2","구분3","연도","월","실적"}
+    miss = need - set(df_raw.columns)
+    if miss:
+        raise ValueError(f"[제품수불표] 필수 컬럼 누락: {miss}")
+    df = df_raw.copy()
+
+    # 텍스트 정규화
+    for c in ["구분1","구분2","구분3","구분4"]:
+        if c not in df.columns: df[c] = ""
+        df[c] = (df[c].astype(str)
+                     .str.replace("\xa0", " ")
+                     .str.replace(r"\s+", " ", regex=True)
+                     .str.strip())
+
+    # 숫자화
+    df["연도"] = pd.to_numeric(df["연도"], errors="coerce").astype("Int64")
+    df["월"]   = pd.to_numeric(df["월"],   errors="coerce").astype("Int64")
+    df["실적"] = _pf_to_num(df["실적"])
+
+    # 제품수불표만
+    df = df[df["구분1"] == "제품수불표"].copy()
+    # 동일(구분2,구분3)이 여러 줄이면 ‘마지막 값’ 사용하도록 순서 기억
+    df["__ord__"] = range(len(df))
+    return df
+
+def create_product_flow_base(year: int,
+                             month: int,
+                             data: pd.DataFrame,
+                             amount_div: float = 1_000_000) -> pd.DataFrame:
+    """
+    원천 데이터에서 해당 연·월의 값을 뽑아 1행짜리 '연산 결과 테이블'을 돌려준다.
+    - 반환 컬럼(숫자만, 포맷/헤더 없음):
+      ['입고-기초_단가','입고-기초_금액','매출원가-기초_단가','매출원가-기초_금액']
+    - 금액은 amount_div로 나눠 단위를 맞춘다(기본: 원→백만원).
+    """
+    df = _clean_product_flow(data)
+
+    sel = df[(df["연도"] == year) & (df["월"] == month)].copy()
+    # 마지막 값 우선
+    sel = sel.sort_values("__ord__").drop_duplicates(["구분2","구분3"], keep="last")
+
+    # 피벗(없으면 0.0)
+    pv = sel.pivot_table(index="구분2", columns="구분3", values="실적", aggfunc="last")
+    get = lambda g2, g3: float(pv.get(g3, pd.Series()).get(g2, 0.0))
+
+    in_unit     = get("입고-기초", "단가")
+    in_amount   = get("입고-기초", "금액") / amount_div
+    cogs_unit   = get("매출원가-기초", "단가")
+    cogs_amount = get("매출원가-기초", "금액") / amount_div
+
+    base = pd.DataFrame([{
+        "입고-기초_단가": in_unit,
+        "입고-기초_금액": in_amount,
+        "매출원가-기초_단가": cogs_unit,
+        "매출원가-기초_금액": cogs_amount,
+    }])
+    # 나중에 화면에서 쓸 메타 정보도 같이 보관(옵션)
+    base.attrs["unit_label"] = "백만원" if amount_div == 1_000_000 else ""
+    base.attrs["year"] = year
+    base.attrs["month"] = month
+    return base
+
+
+## 현금흐름표 별도
+
+import pandas as pd
+
+def _to_num_cf(s: pd.Series) -> pd.Series:
+    s = s.fillna("").astype(str).str.replace(",", "", regex=False).str.strip()
+    v = pd.to_numeric(s, errors="coerce")
+    return v.fillna(0.0)
+
+def _clean_cf_separate(df_raw: pd.DataFrame) -> pd.DataFrame:
+    df = df_raw.copy()
+    need = {"구분1","구분2","연도","월","실적"}
+    miss = need - set(df.columns)
+    if miss:
+        raise ValueError(f"필수 컬럼 누락: {miss}")
+    for c in ["구분1","구분2","구분3","구분4"]:
+        if c in df.columns:
+            df[c] = df[c].astype(str).str.strip().str.replace(r"\s+", " ", regex=True)
+    df["연도"] = pd.to_numeric(df["연도"], errors="coerce").astype("Int64")
+    df["월"]   = pd.to_numeric(df["월"],   errors="coerce").astype("Int64")
+    df["실적"] = _to_num_cf(df["실적"])
+    # 별도만 사용
+    df = df[df["구분1"] == "현금흐름표_별도"].copy()
+    # 원본 등장 순서 보존용
+    df["__ord__"] = range(len(df))
+    return df
+
+def create_cashflow_separate_by_order(year: int, month: int, data: pd.DataFrame, item_order: list[str]) -> pd.DataFrame:
+    """
+    - 행: item_order 순서를 그대로 사용 (중복 라벨 허용; 예: '기타' 2번)
+    - 열: (year-2)년, (year-1)년, 전월누적, 당월누적, (year)년누적
+    - 중복 라벨은 각 (연,월) 그룹에서 '그 라벨의 n번째 등장'만 뽑아 누적 합산
+    """
+    df = _clean_cf_separate(data)
+
+    # 사용 월 폴백(요청 연도 기준)
+    avail = sorted(df.loc[df["연도"] == year, "월"].dropna().unique())
+    used_month = int(month)
+    if len(avail) and month not in avail:
+        past = [m for m in avail if m <= month]
+        used_month = int(max(past) if past else max(avail))
+
+    # item_order에서 같은 라벨(예: '기타')의 n번째 등장 번호 지정
+    name_counts = {}
+    order_with_n = []
+    for name in item_order:
+        name_counts[name] = name_counts.get(name, 0) + 1
+        order_with_n.append((name, name_counts[name]))  # ('기타', 1), ('기타', 2) ...
+
+    # (핵심) 라벨의 n번째 등장만 골라 합산
+    def _sum_item_nth(name: str, nth: int, years, months):
+        sub = df[(df["연도"].isin(years)) & (df["월"].isin(months))]
+        total = 0.0
+        # (연,월)별로, 해당 라벨의 nth 등장 행만 집계
+        for (_, _), g in sub.groupby(["연도", "월"], sort=False):
+            g = g[g["구분2"] == name].sort_values("__ord__", kind="stable")
+            if len(g) >= nth:
+                total += float(g.iloc[nth - 1]["실적"])
+        return total
+
+    def _block(years, months):
+        return [_sum_item_nth(nm, nth, years, months) for (nm, nth) in order_with_n]
+
+    col_prev2_label = f"{str(year-2)[-2:]}년"
+    col_prev1_label = f"{str(year-1)[-2:]}년"
+    col_currsum_label = f"{str(year)[-2:]}년누적"
+
+    col_prev2 = _block([year-2], range(1, 13))
+    col_prev1 = _block([year-1], range(1, 13))
+    prev_months = range(1, used_month) if used_month > 1 else []
+    col_prev   = _block([year], prev_months) if prev_months else [0.0] * len(order_with_n)
+    col_ytd    = _block([year], range(1, used_month + 1))
+
+    # 인덱스는 원래 라벨 그대로
+    index_labels = [nm for (nm, _) in order_with_n]
+
+    out = pd.DataFrame(
+        {
+            col_prev2_label: col_prev2,
+            col_prev1_label: col_prev1,
+            "전월누적": col_prev,
+            "당월누적": col_ytd,
+            col_currsum_label: col_ytd,
+        },
+        index=pd.Index(index_labels, name="구분"),
+        dtype=float
+    )
+
+
+    out.attrs["used_month"] = used_month
+    out.attrs["prev_month"] = (used_month - 1) if used_month > 1 else 1
+    return out
+
+
