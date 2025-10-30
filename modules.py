@@ -1879,7 +1879,7 @@ def _closest_month(df: pd.DataFrame, year: int, month: int) -> int | None:
     le = [m for m in avail if m <= month]
     return le[-1] if le else avail[-1]
 
-def create_bs_snapshot_by_items(year:int, month:int, data:pd.DataFrame,
+def create_bs_by_items(year:int, month:int, data:pd.DataFrame,
                                 item_order:list[str]) -> pd.DataFrame:
     """
     구분3만으로 집계. item_order 순서대로 행을 만들고, 회사별(현재월) 열도 함께 생성.
@@ -1929,15 +1929,12 @@ def create_bs_snapshot_by_items(year:int, month:int, data:pd.DataFrame,
     comp_cols = [c for c in out.columns if c not in ["'24","'25","당월","전월비 증감"]]
     out = out[["'24","'25","당월"] + comp_cols + ["전월비 증감"]]
 
-    # t3에서 쓸 메타
+
     out.attrs['used_month'] = used_m
     out.attrs['prev_month'] = prev_m
     return out
 
 # ===== 회전일 =====
-
-import pandas as pd
-import numpy as np
 
 def _num_paren(s: pd.Series) -> pd.Series:
     s = s.astype(str).str.strip()
@@ -2018,10 +2015,10 @@ def _normalize_turnover(df_raw: pd.DataFrame) -> pd.DataFrame:
 
 
 
-def create_turnover_snapshot(year: int, month: int, data: pd.DataFrame) -> pd.DataFrame:
+def create_turnover(year: int, month: int, data: pd.DataFrame) -> pd.DataFrame:
 
 
-    df = _normalize_turnover(data)   # <- 구분=항목, 회사=구분3(계/특수강/남통/천진/태국) 로 표준화
+    df = _normalize_turnover(data)   
 
     # ───────── 월 선택(선택 월이 없으면 가장 가까운 과거 월) ─────────
     avail_this = sorted(df.loc[df['연도'] == year, '월'].dropna().unique())
@@ -2130,11 +2127,7 @@ def create_turnover_snapshot(year: int, month: int, data: pd.DataFrame) -> pd.Da
     out.attrs['prev_month'] = prev_m
     return out
 
-##roe
-# ==== 강한 문자열 정리 유틸 ====
-import re
-import pandas as pd
-import numpy as np
+##### ROE #####
 
 _ZWS = "\u200b"          # 제로폭 공백
 _WS_RE = re.compile(r"\s+", re.UNICODE)
@@ -2948,3 +2941,487 @@ def create_cashflow_separate_by_order(year: int, month: int, data: pd.DataFrame,
     return out
 
 
+#####재무상태표 별도
+
+import pandas as pd
+import numpy as np
+
+def _bs_to_number(x):
+    s = str(x).strip()
+    if not s:
+        return 0.0
+    neg = s.startswith('(') and s.endswith(')')
+    s = s.replace('(', '').replace(')', '').replace(',', '')
+    try:
+        v = float(s)
+    except Exception:
+        return 0.0
+    return -abs(v) if neg else v
+
+
+import pandas as pd
+import numpy as np
+
+def _bs_to_number(x):
+    s = str(x).strip()
+    if not s:
+        return 0.0
+    neg = s.startswith('(') and s.endswith(')')
+    s = s.replace('(', '').replace(')', '').replace(',', '')
+    try:
+        v = float(s)
+    except Exception:
+        return 0.0
+    return -abs(v) if neg else v
+
+def _normalize_bs_simple(df_raw: pd.DataFrame) -> pd.DataFrame:
+
+    df = df_raw.copy()
+
+    item_col = next((c for c in ['구분3','구분2','항목','구분'] if c in df.columns), None)
+    comp_col = next((c for c in ['회사','법인','구분4'] if c in df.columns), None)
+
+    for need in ['연도','월','실적']:
+        if need not in df.columns:
+            raise ValueError(f"재무상태표 데이터에 '{need}' 컬럼이 필요합니다.")
+    if item_col is None:
+        raise ValueError("재무상태표: '구분3/구분2/항목/구분' 중 하나가 필요합니다.")
+
+    df[item_col] = df[item_col].astype(str).str.strip()
+    if comp_col is None:
+        comp_col = '_회사'
+        df[comp_col] = '전체'
+    else:
+        df[comp_col] = df[comp_col].astype(str).str.strip().replace({'타이':'태국'})
+
+    s = df['실적'].astype(str).str.strip()
+    neg = s.str.match(r'^\(.*\)$')
+    s = s.str.replace(r'[(),]', '', regex=True)
+    v = pd.to_numeric(s, errors='coerce').fillna(0.0)
+    v[neg] = -v[neg].abs()
+    df['실적'] = v
+
+    df['연도'] = pd.to_numeric(df['연도'], errors='coerce').astype('Int64')
+    df['월']   = pd.to_numeric(df['월'],   errors='coerce').astype('Int64')
+
+    drop_cols = [c for c in df.columns if str(c).startswith('Unnamed')]
+    if drop_cols: df = df.drop(columns=drop_cols, errors='ignore')
+
+    return df.rename(columns={item_col:'구분3', comp_col:'회사'})
+
+
+def _pick_used_prev_month(df: pd.DataFrame, year: int, month: int):
+    # year, month에서 가장 가까운 사용월
+    used = _closest_month(df, year, month)
+    if used is None:
+        # 그 해에 있는 최대 월로 대체
+        y_months = df.loc[df['연도']==year, '월'].dropna().astype(int)
+        used = int(y_months.max()) if not y_months.empty else None
+    if used is None:
+        # 전년도 12월로 최종 대체
+        used = _closest_month(df, year-1, 12)
+
+    if used is None:
+        raise ValueError(f"{year}년에 사용할 월 데이터가 없습니다.")
+
+    # 전월 계산(해당 해에서 직전월 없으면 전년도 12월)
+    if used > 1:
+        prev_y = year
+        prev_m = _closest_month(df, year, used-1)
+        if prev_m is None:
+            prev_m = used-1
+    else:
+        prev_y = year-1
+        prev_m = _closest_month(df, year-1, 12)
+
+    return int(used), int(prev_y) if prev_y is not None else None, int(prev_m) if prev_m is not None else None
+
+
+import pandas as pd
+
+import pandas as pd
+
+def create_bs_from_gubun2_teuksugang(
+    year: int,
+    month: int,
+    data: pd.DataFrame,
+    item_order: list[str],
+) -> pd.DataFrame:
+    """
+    원본 데이터의 '구분2'에서 '특수강'만 필터링 후 재무상태표 생성.
+    반환 컬럼: ['\'YY년말', '\'YY년 선택전 월', '\'YY년 선택월', '전월대비']
+    """
+    # 1) 원본에서 '구분2'로 선필터 (정규화 이전에 '구분2'만 신뢰)
+    if '구분2' not in data.columns:
+        raise ValueError("'구분2' 컬럼이 없습니다. 원본 스키마를 확인하세요.")
+    df_src = data.copy()
+    df_src['구분2'] = df_src['구분2'].astype(str).str.strip()
+    df_src = df_src[df_src['구분2'] == '특수강'].copy()
+
+    if df_src.empty:
+        raise ValueError("원본 '구분2'에서 '특수강' 데이터를 찾지 못했습니다.")
+
+    # 2) 정규화(숫자 파싱/타입 캐스팅 등)
+    df = _normalize_bs_simple(df_src)  # 이 함수는 열 이름을 '구분3','연도','월','실적'로 정돈
+
+    # 3) 해당 연도의 사용월(선택월) 결정
+    y_months = sorted(int(m) for m in df.loc[df['연도']==year, '월'].dropna().unique())
+    if not y_months:
+        raise ValueError(f"'구분2=특수강'의 {year}년 데이터가 없습니다.")
+
+    req_m = int(month)
+    used_candidates = [m for m in y_months if m <= req_m]
+    used_m = used_candidates[-1] if used_candidates else y_months[-1]  # 같은 해에서 가장 근접 과거월, 없으면 그 해 최대월
+
+    # 4) 선택전 월 결정 (같은 해 직전 존재 월 → 없으면 전년도 12월 → 그래도 없으면 None=0 처리)
+    prev_y = year
+    prev_list = [m for m in y_months if m < used_m]
+    if prev_list:
+        prev_m = prev_list[-1]
+    else:
+        prev_y = year - 1
+        prev_m = 12 if not df[(df['연도']==prev_y) & (df['월']==12)].empty else None
+
+    # 5) 합계 헬퍼
+    def _sum_item(item: str, y: int | None, m: int | None) -> float:
+        if y is None or m is None:
+            return 0.0
+        mask = (df['구분3'].astype(str).str.strip()==item) & (df['연도']==y) & (df['월']==m)
+        return float(df.loc[mask, '실적'].sum())
+
+    # 6) 컬럼 라벨
+    yy_prev = f"{(year-1)%100:02d}"
+    yy_curr = f"{year%100:02d}"
+    col_yend = f"'{yy_prev}년말"
+    col_prev = f"'{yy_curr}년 선택전 월"
+    col_curr = f"'{yy_curr}년 선택월"
+
+    # 7) 행 구성 (item_order 그대로)
+    rows = []
+    for item in item_order:
+        v_yend = _sum_item(item, year-1, 12)       # 전년도 12월만
+        v_prev = _sum_item(item, prev_y, prev_m)   # 선택전 월(없으면 0)
+        v_curr = _sum_item(item, year, used_m)     # 선택월
+        rows.append({col_yend: v_yend, col_prev: v_prev, col_curr: v_curr, "전월대비": v_curr - v_prev})
+
+    out = pd.DataFrame(rows, index=pd.Index(item_order, name='구분')).fillna(0.0)
+    # ... out 생성까지 동일 ...
+
+    # (추가) 뷰 호환용 컬럼명으로 리네임
+    out = out.rename(columns={
+        col_yend: "'24년말",         # 전년도 12월
+        col_prev: "'25",         # 선택전 월(전월)
+        col_curr: "당월",         # 선택월
+        "전월대비": "전월비 증감"
+    })
+
+    # (고정 순서)
+    out = out[["'24년말","'25","당월","전월비 증감"]]
+
+
+    # 8) 뷰용 메타 (항상 int/또는 None)
+    out.attrs['used_month'] = int(used_m)
+    out.attrs['prev_month'] = int(prev_m) if prev_m is not None else None
+    out.attrs['prev_year']  = int(prev_y)
+
+    return out
+
+
+
+
+    # 메타
+    out.attrs['used_month'] = used_m
+    out.attrs['prev_month'] = prev_m
+    return out
+
+
+
+###회전일 (별도)
+
+def _normalize_turnover_v2(df_raw: pd.DataFrame) -> pd.DataFrame:
+    df = df_raw.copy()
+
+    # 값/항목/회사 후보
+    val_col = next((c for c in ['회전일','실적','값','value'] if c in df.columns), None)
+    if val_col is None:
+        raise ValueError("회전일 데이터에 '회전일/실적/값' 컬럼이 필요합니다.")
+
+    # 기본 숫자/연월 정리
+    df['연도'] = pd.to_numeric(df['연도'], errors='coerce').astype('Int64')
+    df['월']   = pd.to_numeric(df['월'],   errors='coerce').astype('Int64')
+
+    # (1) 괄호 음수 → 음수, 쉼표 제거
+    df[val_col] = _num_paren(df[val_col]).astype(float)
+
+    # (2) **구분3 == '특수강'만 필터(별칭 정리 포함)**  ← 추가
+    if '구분3' in df.columns:
+        g3norm = (df['구분3'].astype(str).str.strip()
+                            .replace({'타이':'태국', '남동':'남통'}))
+        df = df[g3norm.eq('특수강')].copy()
+        df.loc[:, '구분3'] = g3norm.loc[df.index]  # 정리된 라벨로 유지
+
+    # 후보 열들
+    cand_item = ['구분3','구분2','구분','항목']
+    cand_comp = ['회사','법인','구분4']
+
+    # 회사/항목 기본 선택
+    item_col = next((c for c in cand_item if c in df.columns), None)
+    comp_col = next((c for c in cand_comp if c in df.columns), None)
+
+    # --- 회사명이 구분3에 들어있는 케이스 감지 ---
+    known_companies = {'계','전체','연결','특수강','본사','남통','남동','천진','태국','타이'}
+    def looks_like_company(series) -> bool:
+        s = series.astype(str).str.strip()
+        nonnull = s[s != ""]
+        if len(nonnull) == 0: return False
+        hit = nonnull.isin(known_companies).mean()
+        return hit >= 0.7
+
+    if ('구분3' in df.columns) and (comp_col is None or looks_like_company(df['구분3'])):
+        comp_col = '구분3'
+        item_col = next((c for c in ['구분2','구분','항목'] if c in df.columns and c != comp_col), item_col)
+
+    if item_col is None:
+        raise ValueError("회전일 데이터에 항목 컬럼(구분3/구분2/구분/항목) 중 하나가 필요합니다.")
+
+    # 문자열 정리 + alias
+    df[item_col] = df[item_col].astype(str).str.strip()
+    if comp_col is None:
+        comp_col = '_회사'
+        df[comp_col] = '전체'
+    df[comp_col] = (
+        df[comp_col].astype(str).str.strip()
+          .replace({'타이':'태국', '남동':'남통'})
+    )
+
+    # (3) **최종 회사 라벨을 ‘특수강’으로 강제**  ← 추가
+    # 구분3을 회사로 쓰지 않는 입력 형태라도, 계산 결과는 특수강만 되게 고정
+    if comp_col != '구분3':
+        df[comp_col] = '특수강'
+
+    # 쓰지 않는 Unnamed 열 제거
+    drop_cols = [c for c in df.columns if str(c).startswith('Unnamed')]
+    if drop_cols:
+        df = df.drop(columns=drop_cols, errors='ignore')
+
+    return df.rename(columns={item_col: '구분', comp_col: '회사', val_col: '값'})
+
+
+
+
+import numpy as np
+import pandas as pd
+
+# modules.py
+
+import numpy as np
+import pandas as pd
+
+# ─────────────────────────────────────────────────────────────
+# 공통 유틸: 괄호음수 + 쉼표 제거
+# ─────────────────────────────────────────────────────────────
+def _num_paren(s: pd.Series) -> pd.Series:
+    s = s.astype(str).str.strip()
+    neg = s.str.match(r'^\(.*\)$')
+    s = s.str.replace(r'[(),]', '', regex=True)
+    v = pd.to_numeric(s, errors='coerce')
+    v[neg] = -v[neg].abs()
+    return v
+
+
+# ─────────────────────────────────────────────────────────────
+# 원천 정규화 (표준 스키마: 구분 / 회사 / 값 / 연도 / 월)
+# ─────────────────────────────────────────────────────────────
+def _normalize_turnover_v2(df_raw: pd.DataFrame) -> pd.DataFrame:
+    """
+    회전일 원천을 표준 스키마로 정리:
+      - 항목: '구분'
+      - 회사: '회사'
+      - 값  : '값'
+    회사명이 구분3(계/특수강/남통/천진/태국 등)에 들어있는 경우도 자동 감지.
+    """
+    df = df_raw.copy()
+
+    # 값/항목/회사 후보
+    val_col = next((c for c in ['회전일','실적','값','value'] if c in df.columns), None)
+    if val_col is None:
+        raise ValueError("회전일 데이터에 '회전일/실적/값' 컬럼이 필요합니다.")
+
+    # 기본 숫자/연월 정리
+    df['연도'] = pd.to_numeric(df['연도'], errors='coerce').astype('Int64')
+    df['월']   = pd.to_numeric(df['월'],   errors='coerce').astype('Int64')
+
+    # 괄호 음수 → 음수, 쉼표 제거
+    df[val_col] = _num_paren(df[val_col]).astype(float)
+
+    # 후보 열들
+    cand_item = ['구분3','구분2','구분','항목']
+    cand_comp = ['회사','법인','구분4']
+
+    # 회사/항목 기본 선택
+    item_col = next((c for c in cand_item if c in df.columns), None)
+    comp_col = next((c for c in cand_comp if c in df.columns), None)
+
+    # 회사명이 구분3에 들어있는 케이스 감지
+    known_companies = {'계','전체','연결','특수강','본사','남통','남동','천진','태국','타이'}
+    def looks_like_company(series) -> bool:
+        s = series.astype(str).str.strip()
+        nonnull = s[s != ""]
+        if len(nonnull) == 0: return False
+        hit = nonnull.isin(known_companies).mean()
+        return hit >= 0.7
+
+    if ('구분3' in df.columns) and (comp_col is None or looks_like_company(df['구분3'])):
+        comp_col = '구분3'
+        # 항목은 구분2 > 구분 > 항목 순으로
+        item_col = next((c for c in ['구분2','구분','항목'] if c in df.columns and c != comp_col), item_col)
+
+    if item_col is None:
+        raise ValueError("회전일 데이터에 항목 컬럼(구분3/구분2/구분/항목) 중 하나가 필요합니다.")
+
+    # 문자열 정리 + alias
+    df[item_col] = df[item_col].astype(str).str.strip()
+    if comp_col is None:
+        comp_col = '_회사'
+        df[comp_col] = '전체'
+    df[comp_col] = (
+        df[comp_col].astype(str).str.strip()
+          .replace({'타이':'태국', '남동':'남통'})   # alias 통일
+    )
+
+    # 쓰지 않는 Unnamed 열 제거
+    drop_cols = [c for c in df.columns if str(c).startswith('Unnamed')]
+    if drop_cols:
+        df = df.drop(columns=drop_cols, errors='ignore')
+
+    return df.rename(columns={item_col: '구분', comp_col: '회사', val_col: '값'})
+
+
+# ─────────────────────────────────────────────────────────────
+# 특수강 전용 4열 표 생성
+#  - '전년도 말' 컬럼은 (year, 1월) 데이터를 사용
+#  - 구분3 == '특수강' 행만 사용해 연산
+#  - 계산 단계에서 반올림/포맷 없음 (정밀도 보존)
+# ─────────────────────────────────────────────────────────────
+def create_turnover_special_steel(year: int, month: int, data: pd.DataFrame) -> pd.DataFrame:
+    """
+    행: 매출채권 / 재고자산 / 매임채무 / 현금전환주기
+    열: '{YY}년말'(실데이터: year의 1월) / '{YY}.{m-1} 월' / '{YY}.{m} 월' / '전월대비'
+    - 동일 항목·월 중복행은 평균 사용
+    - 구분3 == '특수강' 조건으로 원천 제한
+    - 계산 결과는 반올림하지 않음(표시단에서 포맷)
+    """
+    # 1) 원천 정규화
+    df_norm = _normalize_turnover_v2(data)
+
+    # alias 통일 함수
+    def norm_comp(x: str) -> str:
+        x = str(x).strip()
+        x = {'타이': '태국', '남동': '남통'}.get(x, x)
+        if x in ('전체', '연결'):
+            return '계'
+        return x
+
+    # 2) 구분3 == '특수강'으로 필터 (원천 data 기준 → 인덱스 정합 유지)
+    if '구분3' in data.columns:
+        g3norm = (data['구분3'].astype(str).str.strip()
+                               .replace({'타이':'태국', '남동':'남통'}))
+        mask = g3norm.eq('특수강')
+        df = df_norm.loc[mask].copy()
+    else:
+        # 구분3 없으면 정규화된 회사로 보조
+        df = df_norm.loc[df_norm['회사'].map(norm_comp).eq('특수강')].copy()
+
+    # 3) 당월 선택 (요청월이 없으면 가장 가까운 과거월)
+    avail_this = sorted(df.loc[df['연도'] == year, '월'].dropna().unique())
+    used_m = month
+    if avail_this and month not in avail_this:
+        prior = [m for m in avail_this if m <= month]
+        used_m = prior[-1] if prior else avail_this[-1]
+
+    # 4) 전월 계산
+    prev_y, prev_m = year, used_m - 1
+    if prev_m < 1:
+        prev_y = year - 1
+        prev_avail = sorted(df.loc[df['연도'] == prev_y, '월'].dropna().unique())
+        prev_m = prev_avail[-1] if prev_avail else 12
+
+    # 5) '전년도 말' → (year, 1월) 데이터 사용 (1월 없으면 해당 연도 가장 이른 월)
+    yend_label_year = year - 1          # 라벨 표기용(예: '24년말)
+    yend_data_year  = year              # 실제 참조 연도
+    avail_y = sorted(df.loc[df['연도'] == yend_data_year, '월'].dropna().unique())
+    if len(avail_y) == 0:
+        yend_m = 1                      # 데이터가 전혀 없으면 1월로 가정(결국 NaN 반환)
+    else:
+        yend_m = 1 if 1 in avail_y else avail_y[0]
+
+    # 6) 단일 월·항목 값 추출 (중복행은 평균)
+    def val_of(item: str, y: int, m: int) -> float:
+        sub = df[(df['구분'] == item) & (df['연도'] == y) & (df['월'] == m)].copy()
+        if sub.empty:
+            return np.nan
+        sub['회사N'] = sub['회사'].map(norm_comp)
+        byc = sub.groupby('회사N', dropna=True)['값'].mean()
+        # 특수강 우선
+        if '특수강' in byc.index:
+            return float(byc['특수강'])
+        # 특수강이 비어있으면 '계'라도 쓰고 싶으면 아래 주석 해제
+        # elif '계' in byc.index:
+        #     return float(byc['계'])
+        return np.nan
+
+    items = ['매출채권', '재고자산', '매임채무']
+
+    yend = {it: val_of(it, yend_data_year, yend_m) for it in items}
+    prev = {it: val_of(it, prev_y,           prev_m) for it in items}
+    curr = {it: val_of(it, year,             used_m) for it in items}
+
+    # 7) 현금전환주기 = 매출채권 + 재고자산 - 매임채무 (NaN-safe)
+    def ccc(dic):
+        a = dic.get('매출채권', np.nan)
+        b = dic.get('재고자산', np.nan)
+        c = dic.get('매임채무', np.nan)
+        a = 0 if pd.isna(a) else a
+        b = 0 if pd.isna(b) else b
+        c = 0 if pd.isna(c) else c
+        return a + b - c
+
+    yend_ccc = ccc(yend)
+    prev_ccc = ccc(prev)
+    curr_ccc = ccc(curr)
+
+    # 8) 표 구성 (반올림/포맷 없음)
+    col_yend = f"'{str(yend_label_year)[-2:]}년말"     # 예: '24년말
+    col_prev = f"'{str(prev_y)[-2:]}.{prev_m} 월"
+    col_curr = f"'{str(year)[-2:]}.{used_m} 월"
+
+    out = pd.DataFrame(
+        index=['매출채권', '재고자산', '매임채무', '현금전환주기'],
+        columns=[col_yend, col_prev, col_curr, '전월대비'],
+        dtype=float
+    )
+
+    for it in items:
+        out.loc[it, col_yend] = yend[it]
+        out.loc[it, col_prev] = prev[it]
+        out.loc[it, col_curr] = curr[it]
+        out.loc[it, '전월대비'] = (
+            curr[it] - prev[it] if pd.notnull(curr[it]) and pd.notnull(prev[it]) else np.nan
+        )
+
+    out.loc['현금전환주기', col_yend] = yend_ccc
+    out.loc['현금전환주기', col_prev] = prev_ccc
+    out.loc['현금전환주기', col_curr] = curr_ccc
+    out.loc['현금전환주기', '전월대비'] = (
+        curr_ccc - prev_ccc if pd.notnull(curr_ccc) and pd.notnull(prev_ccc) else np.nan
+    )
+
+    # 메타(뷰에서 캡션 등으로 사용 가능)
+    out.attrs.update({
+        'company': '특수강',
+        'used_month': used_m,
+        'prev_month': prev_m,
+        'year_end_label_year': yend_label_year,   # '24년말 표기용
+        'year_end_data': (yend_data_year, yend_m) # (실데이터 참조 연,월) = (year, 1 또는 earliest)
+    })
+    return out
