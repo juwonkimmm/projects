@@ -3037,6 +3037,72 @@ with t2:
 
 
 
+    st.divider()
+
+    st.markdown("<h4>11) 수익성 (별도)</h4>", unsafe_allow_html=True)
+
+
+    try:
+        file_name = st.secrets["sheets"]["f_16"]
+        raw = pd.read_csv(file_name, dtype=str)
+
+        # 최신 modules 반영
+        import importlib
+        importlib.invalidate_caches(); importlib.reload(modules)
+
+        # 본사 전용 표 생성 
+        snap = modules.create_profitability_special_steel(
+            year=int(st.session_state['year']),
+            month=int(st.session_state['month']),
+            data=raw
+        )
+
+        # ─ 표시용 포맷: 소수1자리, NaN은 공란 ─
+        def fmt1(x):
+            try:
+                v = float(x)
+                return f"{v:.2f}" if pd.notnull(v) else ""
+            except Exception:
+                return x
+
+        # 인덱스 이름 부여 후 1열로 올리기
+        disp = snap.copy()
+        disp.index.name = '구분'
+        disp = disp.reset_index()
+        disp = disp.applymap(fmt1)
+
+        cols = disp.columns.tolist()
+
+        if '전월대비' in cols:
+            nth_delta = cols.index('전월대비') + 1
+        else:
+            nth_delta = len(cols)  # 안전장치
+
+
+        # try:
+        #     ccc_row_idx = disp.index[disp['구분'] == '현금전환주기'][0] + 1
+        # except Exception:
+        #     ccc_row_idx = None
+
+        styles = [
+
+            {'selector': 'thead th', 'props': [('text-align','center'),
+                                            ('padding','10px 8px'),
+                                            ('font-weight','700')]},
+
+            {'selector': 'tbody td', 'props': [('text-align','right'), ('padding','8px 10px')]},
+
+            {'selector': 'tbody td:first-child', 'props': [('text-align','center')]},
+
+        ]
+
+
+        display_styled_df(disp, styles=styles, already_flat=True)
+
+    except Exception as e:
+        st.error(f"회전일 표 생성 중 오류: {e}")
+
+
 
 
 

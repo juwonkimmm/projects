@@ -3425,3 +3425,438 @@ def create_turnover_special_steel(year: int, month: int, data: pd.DataFrame) -> 
         'year_end_data': (yend_data_year, yend_m) # (실데이터 참조 연,월) = (year, 1 또는 earliest)
     })
     return out
+
+#
+
+def create_profitability_special_steel(year: int, month: int, data: pd.DataFrame) -> pd.DataFrame:
+    # 1) 원천 정규화
+    df_norm = _normalize_turnover_v2(data)
+
+    # alias 통일 함수
+    def norm_comp(x: str) -> str:
+        x = str(x).strip()
+        x = {'타이': '태국', '남동': '남통'}.get(x, x)
+        if x in ('전체', '연결'):
+            return '계'
+        return x
+
+    # 2) 구분3 == '본사'로 필터 (원천 data 기준 → 인덱스 정합 유지)
+    if '구분3' in data.columns:
+        g3norm = (data['구분3'].astype(str).str.strip()
+                               .replace({'타이':'태국', '남동':'남통'}))
+        mask = g3norm.eq('본사')
+        df = df_norm.loc[mask].copy()
+    else:
+        # 구분3 없으면 정규화된 회사로 보조
+        df = df_norm.loc[df_norm['회사'].map(norm_comp).eq('본사')].copy()
+
+    # 3) 당월 선택 (요청월이 없으면 가장 가까운 과거월)
+    avail_this = sorted(df.loc[df['연도'] == year, '월'].dropna().unique())
+    used_m = month
+    if avail_this and month not in avail_this:
+        prior = [m for m in avail_this if m <= month]
+        used_m = prior[-1] if prior else avail_this[-1]
+
+    # 4) 전월 계산
+    prev_y, prev_m = year, used_m - 1
+    if prev_m < 1:
+        prev_y = year - 1
+        prev_avail = sorted(df.loc[df['연도'] == prev_y, '월'].dropna().unique())
+        prev_m = prev_avail[-1] if prev_avail else 12
+
+    # 5) '전년도 말' → (year, 1월) 데이터 사용 (1월 없으면 해당 연도 가장 이른 월)
+    yend_label_year = year - 1
+    yend_data_year  = year
+    avail_y = sorted(df.loc[df['연도'] == yend_data_year, '월'].dropna().unique())
+    if len(avail_y) == 0:
+        yend_m = 1
+    else:
+        yend_m = 1 if 1 in avail_y else avail_y[0]
+
+    # 6) 단일 월·항목 값 추출 (중복행은 평균)
+    def val_of(item: str, y: int, m: int) -> float:
+        sub = df[(df['구분'] == item) & (df['연도'] == y) & (df['월'] == m)].copy()
+        if sub.empty:
+            return np.nan
+        sub['회사N'] = sub['회사'].map(norm_comp)
+        byc = sub.groupby('회사N', dropna=True)['값'].mean()
+        if '본사' in byc.index:
+            return float(byc['본사'])
+        return np.nan
+
+    # === ROA/ROE는 데이터에 이미 존재하므로 그대로 읽어옴 ===
+    items = ['ROA', 'ROE']
+    yend = {it: val_of(it, yend_data_year, yend_m) for it in items}
+    prev = {it: val_of(it, prev_y,           prev_m) for it in items}
+    curr = {it: val_of(it, year,             used_m) for it in items}
+
+    # 7) 표 구성 (반올림/포맷 없음)
+    col_yend = f"'{str(yend_label_year)[-2:]}년말"     # 예: '24년말
+    col_prev = f"'{str(prev_y)[-2:]}.{prev_m} 월"
+    col_curr = f"'{str(year)[-2:]}.{used_m} 월"
+
+    out = pd.DataFrame(
+        index=['ROA', 'ROE'],
+        columns=[col_yend, col_prev, col_curr, '전월대비'],
+        dtype=float
+    )
+
+    for it in items:
+        out.loc[it, col_yend] = yend[it]
+        out.loc[it, col_prev] = prev[it]
+        out.loc[it, col_curr] = curr[it]
+        out.loc[it, '전월대비'] = (
+            curr[it] - prev[it] if pd.notnull(curr[it]) and pd.notnull(prev[it]) else np.nan
+        )
+
+    # 메타(뷰에서 캡션 등으로 사용 가능)
+    out.attrs.update({
+        'company': '본사',
+        'used_month': used_m,
+        'prev_month': prev_m,
+        'year_end_label_year': yend_label_year,   # '24년말 표기용
+        'year_end_data': (yend_data_year, yend_m) # (실데이터 참조 연,월) = (year, 1 또는 earliest)
+    })
+    return out
+
+
+def create_profitability_special_steel(year: int, month: int, data: pd.DataFrame) -> pd.DataFrame:
+    # 0) 원본 복사
+    df_norm = data.copy()
+
+    # 0-1) 예시데이터 스키마 → 표준 스키마(구분/회사/값)로 보정
+    #  - 구분 = 구분2 (ROA/ROE)
+    #  - 회사 = 구분3 (본사/남통/천진/태국...)
+    #  - 값   = 실적 ⇒ "2.3%" -> 2.3 (문자 % 제거 후 숫자 변환)
+    if "구분" not in df_norm.columns and "구분2" in df_norm.columns:
+        df_norm["구분"] = df_norm["구분2"]
+    if "회사" not in df_norm.columns and "구분3" in df_norm.columns:
+        df_norm["회사"] = df_norm["구분3"]
+    if "값" not in df_norm.columns and "실적" in df_norm.columns:
+        df_norm["값"] = (
+            df_norm["실적"].astype(str).str.strip().str.replace("%", "", regex=False)
+        )
+
+
+    for c in ["연도", "월"]:
+        if c in df_norm.columns:
+            df_norm[c] = pd.to_numeric(df_norm[c], errors="coerce").astype("Int64")
+    if "값" in df_norm.columns:
+        df_norm["값"] = pd.to_numeric(df_norm["값"], errors="coerce")
+    for c in ["구분", "회사", "구분3"]:
+        if c in df_norm.columns:
+            df_norm[c] = df_norm[c].astype(str).str.strip()
+
+    # alias 통일
+    def norm_comp(x: str) -> str:
+        x = str(x).strip()
+        x = {"타이": "태국", "남동": "남통"}.get(x, x)
+        if x in ("전체", "연결"):
+            return "계"
+        return x
+
+    # 1) 본사 필터 (구분3가 있으면 그걸 기준으로, 아니면 회사 기준)
+    if "구분3" in df_norm.columns:
+        g3norm = df_norm["구분3"].astype(str).str.strip().replace({"타이": "태국", "남동": "남통"})
+        df = df_norm.loc[g3norm.eq("본사")].copy()
+    else:
+        df = df_norm.loc[df_norm["회사"].map(norm_comp).eq("본사")].copy()
+
+    # 2) 당월 선택 (요청월이 없으면 가장 가까운 과거월)
+    avail_this = sorted(df.loc[df["연도"] == year, "월"].dropna().unique())
+    used_m = month
+    if avail_this and month not in avail_this:
+        prior = [m for m in avail_this if m <= month]
+        used_m = prior[-1] if prior else (avail_this[-1] if len(avail_this) else month)
+
+    # 3) 전월
+    prev_y, prev_m = year, int(used_m) - 1
+    if prev_m < 1:
+        prev_y = year - 1
+        prev_avail = sorted(df.loc[df["연도"] == prev_y, "월"].dropna().unique())
+        prev_m = int(prev_avail[-1]) if prev_avail else 12
+
+    # 4) '전년도 말' 라벨은 y-1로 표기하되, 데이터는 (year, 1월) 우선
+    yend_label_year = year - 1
+    yend_data_year  = year
+    avail_y = sorted(df.loc[df["연도"] == yend_data_year, "월"].dropna().unique())
+    yend_m = 1 if (len(avail_y) == 0 or 1 in avail_y) else avail_y[0]
+
+    # 5) 값 조회 (본사 행 중복 시 평균)
+    def val_of(item: str, y: int, m: int) -> float:
+        sub = df[(df["구분"] == item) & (df["연도"] == y) & (df["월"] == m)].copy()
+        if sub.empty:
+            return np.nan
+        if "회사" in sub.columns:
+            sub["회사N"] = sub["회사"].map(norm_comp)
+        else:
+            sub["회사N"] = sub["구분3"].map(norm_comp)
+        byc = sub.groupby("회사N", dropna=True)["값"].mean()
+        return float(byc["본사"]) if "본사" in byc.index else np.nan
+
+    items = ["ROA", "ROE"]
+    yend = {it: val_of(it, yend_data_year, int(yend_m)) for it in items}
+    prev = {it: val_of(it, prev_y,           int(prev_m)) for it in items}
+    curr = {it: val_of(it, year,             int(used_m)) for it in items}
+
+    # 6) 표 구성
+    col_yend = f"'{str(yend_label_year)[-2:]}년말"     # 예: '24년말
+    col_prev = f"'{str(prev_y)[-2:]}.{int(prev_m)} 월"
+    col_curr = f"'{str(year)[-2:]}.{int(used_m)} 월"
+
+    out = pd.DataFrame(
+        index=items,
+        columns=[col_yend, col_prev, col_curr, "전월대비"],
+        dtype=float
+    )
+
+    for it in items:
+        out.loc[it, col_yend] = yend[it]
+        out.loc[it, col_prev] = prev[it]
+        out.loc[it, col_curr] = curr[it]
+        out.loc[it, "전월대비"] = (
+            curr[it] - prev[it] if pd.notnull(curr[it]) and pd.notnull(prev[it]) else np.nan
+        )
+
+    # 메타
+    out.attrs.update({
+        "company": "본사",
+        "used_month": int(used_m),
+        "prev_month": int(prev_m),
+        "year_end_label_year": yend_label_year,
+        "year_end_data": (yend_data_year, int(yend_m))
+    })
+    return out
+
+
+#####판매계획 및 실적
+
+
+# modules.py
+import pandas as pd
+import numpy as np
+
+__all__ = ["create_sales_plan_vs_actual"]
+
+# ---- 단위 스케일 정의 (원천 기준 가정)
+# 판매량: 톤(그대로), 매출액: 백만원 → 억원(÷100), 단가: (백만원/톤) → 천개(×1000)
+AMOUNT_SCALE = 1 / 100   # 백만원 → 억원
+UNIT_SCALE   = 1000      # (백만원/톤) → (천개/톤)
+
+def _to_number(x):
+    s = str(x).strip()
+    if s == "" or s.lower() in ("nan", "none"):
+        return np.nan
+    s = s.replace(",", "")
+    if s.startswith("(") and s.endswith(")"):
+        try:
+            return -float(s.strip("()"))
+        except:
+            pass
+    try:
+        return float(s)
+    except:
+        return np.nan
+
+def _trunc(v):
+    """소수 버림(끊기). NaN은 그대로."""
+    if pd.isna(v):
+        return np.nan
+    return float(np.trunc(v))
+
+def create_sales_plan_vs_actual(year: int, month: int, data: pd.DataFrame) -> pd.DataFrame:
+    """
+    연간사업계획 > 1) 판매계획 및 실적 (연산 모듈)
+    - 입력: 원천 DataFrame(컬럼: 구분1, 구분2, 구분3(판매량/매출액), 구분4(계획/실적), 연도, 월, 실적)
+    - 출력: index=구분(팀/합계행), columns=MultiIndex(
+         [사업 계획(연간) / 사업 계획(누적) / 실적(누적) / 실적-계획 / 달성률(%)]
+         × [판매량 / 단가 / 매출액]   # 달성률은 판매량/매출액만
+      )
+    - 모든 수치는 다음 단위로 '끊어서(버림)' 계산해 반환:
+        · 판매량: 톤(정수)  · 단가: 천개(정수)  · 매출액: 억원(정수)
+    """
+
+    df = data.copy()
+
+    # 0) 문자열 정리/숫자화
+    for c in ["구분1", "구분2", "구분3", "구분4"]:
+        if c not in df.columns:
+            df[c] = ""
+        df[c] = df[c].astype(str).str.replace("\u00A0", "", regex=False).str.strip()
+
+    df["연도"] = pd.to_numeric(df.get("연도"), errors="coerce").astype("Int64")
+    df["월"]   = pd.to_numeric(df.get("월"),   errors="coerce").astype("Int64")
+    df["실적"] = df["실적"].apply(_to_number)
+
+    # 1) 키/조건
+    y = int(year)
+    m = int(month)
+    key = ["구분2", "구분3", "구분4"]
+
+    # 2) 합계 시리즈(원천 단위: 판매량=톤, 매출액=백만원)
+    def sum_year(flag: str):
+        q = (df["연도"] == y) & (df["구분4"] == flag)
+        return df[q].groupby(key)["실적"].sum()
+
+    def sum_cum(flag: str):
+        q = (df["연도"] == y) & (df["월"].between(1, m)) & (df["구분4"] == flag)
+        return df[q].groupby(key)["실적"].sum()
+
+    y_plan_raw = sum_year("계획")
+    p_plan_raw = sum_cum("계획")
+    a_act_raw  = sum_cum("실적")
+
+    # 3) 원천→요청 단위 변환 + 끊기(버림)
+    def qty(series, team, flag):     # 톤 (정수)
+        v = series.get((team, "판매량", flag), 0.0)
+        v = 0.0 if pd.isna(v) else float(v)
+        return _trunc(v)
+
+    def amt(series, team, flag):     # 억원 (정수)
+        v = series.get((team, "매출액", flag), 0.0)
+        v = 0.0 if pd.isna(v) else float(v)
+        return _trunc(v * AMOUNT_SCALE)
+
+    def unit(series, team, flag):    # 천개 (정수)
+        q = series.get((team, "판매량", flag), 0.0)
+        a = series.get((team, "매출액", flag), 0.0)
+        q = 0.0 if pd.isna(q) else float(q)
+        a = 0.0 if pd.isna(a) else float(a)
+        if q == 0:
+            return np.nan
+        return _trunc((a / q) * UNIT_SCALE)
+
+    # 4) 원천 팀 목록 (표시 요구사항: 포스세아는 집계행, 기차배건은 원천 AT_기차배건 사용)
+    teams_raw = [
+        "선재영업팀", "봉강영업팀", "부산영업소", "대구영업소", "글로벌영업팀",
+        "AT_국내", "AT_기차배건",
+        "남통", "천진", "태국",
+    ]
+
+    # 5) 개별 팀(원천) 행 생성 — 모두 '끊기' 반영
+    def build_row(team: str) -> dict:
+        y_qty = qty(y_plan_raw, team, "계획")
+        y_amt = amt(y_plan_raw, team, "계획")
+        y_uni = unit(y_plan_raw, team, "계획")
+
+        p_qty = qty(p_plan_raw, team, "계획")
+        p_amt = amt(p_plan_raw, team, "계획")
+        p_uni = unit(p_plan_raw, team, "계획")
+
+        a_qty = qty(a_act_raw,  team, "실적")
+        a_amt = amt(a_act_raw,  team, "실적")
+        a_uni = unit(a_act_raw, team, "실적")
+
+        d_qty = _trunc(a_qty - p_qty) if (not pd.isna(a_qty) and not pd.isna(p_qty)) else np.nan
+        d_amt = _trunc(a_amt - p_amt) if (not pd.isna(a_amt) and not pd.isna(p_amt)) else np.nan
+        d_uni = _trunc(a_uni - p_uni) if (not pd.isna(a_uni) and not pd.isna(p_uni)) else np.nan
+
+        ach_qty = (a_qty / p_qty * 100) if (p_qty not in (0, None, np.nan) and not pd.isna(p_qty)) else np.nan
+        ach_amt = (a_amt / p_amt * 100) if (p_amt not in (0, None, np.nan) and not pd.isna(p_amt)) else np.nan
+
+        return {
+            ("사업 계획(연간)", "판매량"): y_qty,
+            ("사업 계획(연간)", "단가"):  y_uni,
+            ("사업 계획(연간)", "매출액"): y_amt,
+
+            ("사업 계획(누적)", "판매량"): p_qty,
+            ("사업 계획(누적)", "단가"):  p_uni,
+            ("사업 계획(누적)", "매출액"): p_amt,
+
+            ("실적(누적)", "판매량"):     a_qty,
+            ("실적(누적)", "단가"):      a_uni,
+            ("실적(누적)", "매출액"):     a_amt,
+
+            ("실적-계획", "판매량"):      d_qty,
+            ("실적-계획", "단가"):       d_uni,
+            ("실적-계획", "매출액"):      d_amt,
+
+            ("달성률(%)", "판매량"):      ach_qty,
+            ("달성률(%)", "매출액"):      ach_amt,
+        }
+
+    cols = pd.MultiIndex.from_tuples(list(build_row(teams_raw[0]).keys()))
+    out  = pd.DataFrame(index=teams_raw, columns=cols, dtype=float)
+    for t in teams_raw:
+        out.loc[t] = pd.Series(build_row(t))
+
+    # 6) 합계(집계) — 끊긴 값으로 합산, 단가 재계산도 끊기
+    def sum_rows(row_names, label):
+        names = [r for r in row_names if r in out.index]
+        if not names:
+            return
+        sub = out.loc[names]
+
+        y_qty = _trunc(sub[("사업 계획(연간)", "판매량")].sum())
+        y_amt = _trunc(sub[("사업 계획(연간)", "매출액")].sum())
+        p_qty = _trunc(sub[("사업 계획(누적)", "판매량")].sum())
+        p_amt = _trunc(sub[("사업 계획(누적)", "매출액")].sum())
+        a_qty = _trunc(sub[("실적(누적)",     "판매량")].sum())
+        a_amt = _trunc(sub[("실적(누적)",     "매출액")].sum())
+
+        def _safe_unit(a, q):
+            if q in (0, None) or pd.isna(q):
+                return np.nan
+            return _trunc(a / q)
+
+        row = {}
+        row[("사업 계획(연간)", "판매량")] = y_qty
+        row[("사업 계획(연간)", "단가")]  = _safe_unit(y_amt, y_qty)
+        row[("사업 계획(연간)", "매출액")] = y_amt
+
+        row[("사업 계획(누적)", "판매량")] = p_qty
+        row[("사업 계획(누적)", "단가")]  = _safe_unit(p_amt, p_qty)
+        row[("사업 계획(누적)", "매출액")] = p_amt
+
+        row[("실적(누적)", "판매량")]     = a_qty
+        row[("실적(누적)", "단가")]      = _safe_unit(a_amt, a_qty)
+        row[("실적(누적)", "매출액")]     = a_amt
+
+        row[("실적-계획", "판매량")]      = _trunc(a_qty - p_qty)
+        # 단가 차이도 '끊어서' 계산된 단가끼리의 차이를 다시 끊기
+        uni_act = _safe_unit(a_amt, a_qty)
+        uni_pln = _safe_unit(p_amt, p_qty)
+        row[("실적-계획", "단가")]       = _trunc(uni_act - uni_pln) if (not pd.isna(uni_act) and not pd.isna(uni_pln)) else np.nan
+        row[("실적-계획", "매출액")]      = _trunc(a_amt - p_amt)
+
+        row[("달성률(%)", "판매량")]      = (a_qty / p_qty * 100) if (p_qty not in (0, None, np.nan) and not pd.isna(p_qty)) else np.nan
+        row[("달성률(%)", "매출액")]      = (a_amt / p_amt * 100) if (p_amt not in (0, None, np.nan) and not pd.isna(p_amt)) else np.nan
+
+        out.loc[label] = pd.Series(row)
+
+    # 7) 묶음/집계행
+    naesoo   = ["선재영업팀", "봉강영업팀", "부산영업소", "대구영업소"]
+    soochul  = ["글로벌영업팀"]
+    hq_total = naesoo + soochul                 # 국내(선재)
+    at_total = ["AT_국내", "AT_기차배건"]      # 국내(AT) = 원천
+    china    = ["남통", "천진"]
+    thailand = ["태국"]
+
+    sum_rows(naesoo,                     "내수")
+    sum_rows(soochul,                    "수출")
+    sum_rows(hq_total,                   "국내(선재)")
+    sum_rows(at_total,                   "국내(AT)")
+    sum_rows(["국내(선재)", "국내(AT)"], "국내 계")
+    sum_rows(china,                      "중국 계")
+    sum_rows(thailand,                   "태국 계")
+    sum_rows(["국내 계", "중국 계", "태국 계"], "Total")
+
+    # 포스세아 = 남통 + 천진 (표시용 집계행)
+    sum_rows(china, "포스세아")
+
+    # 8) 표시 순서(트리 없이 전 항목 노출)
+    order = [
+        "선재영업팀","봉강영업팀","부산영업소","대구영업소","글로벌영업팀",
+        "내수","수출","국내(선재)","국내(AT)","국내 계",
+        "포스세아",
+        "AT_기차배건",
+        "중국 계","남통","천진",
+        "태국 계","태국",
+        "Total"
+    ]
+    out = out.reindex([r for r in order if r in out.index] +
+                      [r for r in out.index if r not in order])
+
+    out.attrs.update({"used_month": m})
+    return out
+
