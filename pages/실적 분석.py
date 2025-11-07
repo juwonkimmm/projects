@@ -237,31 +237,13 @@ with t1:
             {'selector': 'thead th', 'props': [('padding','14px 10px'), ('line-height','2')]},  # 전체 헤더 기본(높음)
 
             )
-        
-        
-
-
-        
-
-
-
-
-
-
 
         display_styled_df(snap_disp, styles=styles,already_flat=True, highlight_cols=highlight_cols)
-
-
-
-        
-
 
         st.caption("각 %는 계산")
 
     except Exception as e:
         st.error(f"손익 연결 생성 중 오류: {e}")
-
-    
 
     st.divider()
      
@@ -573,17 +555,6 @@ with t1:
             for j in (5,10)
         ]
         styles += spacer_rules5
-
-        # spacer_rules5 = [
-        #     {
-        #         'selector': f'tbody tr:nth-child({j}) td:nth-child(10)',
-        #         'props': [('border-right','3px solid gray ')]
-               
-        #     }
-
-        #     for j in (1,2,3)
-        # ]
-        # styles += spacer_rules5
 
 
         spacer_rules5 = [
@@ -2558,7 +2529,6 @@ with t2:
 
         last_company_i = max((c_idx[k] for k in company_labels), default=month_i)
 
-        # ─ CSS ─
         styles = [
             {'selector': 'thead', 'props': [('display','none')]},
 
@@ -2859,64 +2829,7 @@ with t2:
         ]
         styles += spacer_rules5
 
-        # spacer_rules5 = [
-        #     {
-                
-        #         'selector': f'tbody tr:nth-child(1) td:nth-child(5)',
-        #         'props': [('border-under','2px solid white ')]
-               
-        #     }
 
-
-
-        # ]
-        # styles += spacer_rules5
-
-        
-        # spacer_rules5 = [
-        #     {
-                
-        #         'selector': f'tbody tr:nth-child(1) td:nth-child(5)',
-        #         'props': [('border-under','2px solid red !important ')]
-               
-        #     }
-
-
-
-        # ]
-        # styles += spacer_rules5
-
-        # spacer_rules5 = [
-        #     {
-        #         'selector': f'tbody tr:nth-child(2) td:nth-child({j})',
-        #         'props': [('border-right','2px solid white ')],
-                
-        #     }
-
-        #     for j in range(6,9)
-
-
-
-        # ]
-        # styles += spacer_rules5
-
-
-
-
-
-        # spacer_rules5 = [
-        #     {
-        #         'selector': f'tbody tr:nth-child(1) td:nth-child({j})',
-        #         'props': [('border-right','2px solid white ')],
-                
-        #     }
-
-        #     for j in range(6,10)
-
-
-
-        # ]
-        # styles += spacer_rules5
 
 
         spacer_rules5 = [
@@ -3103,6 +3016,358 @@ with t2:
         st.error(f"회전일 표 생성 중 오류: {e}")
 
 
+# 연간사업계획
+# =========================
+with t3:
+    st.markdown("<h4>1) 판매계획 및 실적</h4>", unsafe_allow_html=True)
+
+    try:
+        file_name = st.secrets["sheets"]["f_17"]
+        raw = pd.read_csv(file_name, dtype=str)
+
+        import importlib
+        importlib.invalidate_caches()
+        importlib.reload(modules)
+
+        # 모듈: 톤/천개/억원 + 끊기(버림)까지 완료된 결과
+        base = modules.create_sales_plan_vs_actual(
+            year=int(st.session_state['year']),
+            month=int(st.session_state['month']),
+            data=raw
+        )
+
+        # 숫자 포맷
+        def fmt_signed(x: float, decimals=0):
+            try:
+                if x is None:
+                    return ""
+                v = float(x)
+                if pd.isna(v):
+                    return ""
+                neg = v < 0
+                v_abs = abs(v)
+                s = f"{v_abs:,.{decimals}f}" if decimals > 0 else f"{int(v_abs):,}"
+                return f"<span style='color:#d32f2f'>-{s}</span>" if neg else s
+            except Exception:
+                return ""
+
+        def fmt_pct(x):
+            return fmt_signed(x, 0)  # 
+
+        def to_numeric(s):
+            return pd.to_numeric(s, errors="coerce")
+
+        # ─ 2행 헤더(가짜) 구성
+        disp = base.copy()
+        disp.index.name = "구분"
+        disp = disp.reset_index()
+
+        SP = "__sp__"
+        disp.insert(0, SP, "")
+
+        cols = list(disp.columns)
+        c = {k: i for i, k in enumerate(cols)}
+
+        label_candidates = [col for col in cols if isinstance(col, str) and col != SP]
+        label_col = '구분' if '구분' in cols else (label_candidates[0] if label_candidates else cols[1])
+
+        valid_groups = {"사업 계획(연간)", "사업 계획(누적)", "실적(누적)", "실적-계획", "달성률(%)"}
+
+        gu_i    = c_idx['구분']
+        hdr1 = [''] * len(cols); hdr1[gu_i] = '구분'
+
+
+        for col in cols:
+            if not (isinstance(col, tuple) and len(col) >= 2):
+                continue
+            grp, metric = col[0], str(col[1]).strip()
+
+            # 달성률(%)는 '판매량' 위에만 표시
+            if grp == "달성률(%)" and metric == "판매량":
+                hdr1[c[col]] = grp
+            # 그 외 그룹은 '단가' 위에만 표시
+            elif grp in valid_groups - {"달성률(%)"} and metric == "단가":
+                hdr1[c[col]] = grp
+            # 나머지 칸(판매량/매출액 위)은 공란 유지
+
+        hdr2 = [""] * len(cols)
+        hdr2[c[label_col]] = label_col
+        for col in cols:
+            if isinstance(col, tuple) and len(col) >= 2:
+                hdr2[c[col]] = col[1]
+
+
+        header_df = pd.DataFrame([hdr1, hdr2], columns=cols)
+        disp_vis  = pd.concat([header_df, disp], ignore_index=True)
+
+        # ─ 본문 데이터(3행~)
+        body = disp_vis.iloc[2:].copy()
+
+        
+
+        # 1) 단위 연산
+
+        def round_then_strip(v, round_place, strip_factor):
+            if pd.isna(v):
+                return np.nan
+            r = np.round(float(v), round_place)   
+            return int(r // strip_factor)         
+
+        disp_values = body.copy()
+
+        for col in disp_values.columns:
+            if not (isinstance(col, tuple) and len(col) >= 2):
+                continue
+            metric = str(col[1]).strip()
+            if metric == "단가":
+                s = to_numeric(disp_values[col])
+                disp_values[col] = s.apply(lambda v: round_then_strip(v, -2, 1000))
+            elif metric == "매출액":
+                s = to_numeric(disp_values[col])
+                # 만의자리 반올림 
+                disp_values[col] = s.apply(lambda v: round_then_strip(v, -3, 1000))
+
+            elif metric == "판매량":
+                s = to_numeric(disp_values[col])
+                #  백만 이상일 때만 10만자리 반올림 → 10만 단위 표기
+                disp_values[col] = s.apply(
+                    lambda v: (round_then_strip(v, -5, 100000)
+                            if (not pd.isna(v) and abs(float(v)) >= 1_000_000)
+                            else (np.nan if pd.isna(v) else int(float(v))))
+                )
+        
+        # 2) 실적 - 계획
+
+        if (("사업 계획(누적)", "판매량") in disp_values.columns) and (("실적(누적)", "판매량") in disp_values.columns):
+            p = to_numeric(disp_values[("사업 계획(누적)", "판매량")])
+            a = to_numeric(disp_values[("실적(누적)", "판매량")])
+            if ("실적-계획", "판매량") in disp_values.columns:
+                disp_values[("실적-계획", "판매량")] = (a - p).round(0).astype("Int64")
+            if ("달성률(%)", "판매량") in disp_values.columns:
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    disp_values[("달성률(%)", "판매량")] = np.where((~pd.isna(p)) & (p != 0), (a / p) * 100.0, np.nan)
+        
+        if (("사업 계획(누적)", "매출액") in disp_values.columns) and (("실적(누적)", "매출액") in disp_values.columns):
+            p = to_numeric(disp_values[("사업 계획(누적)", "매출액")])
+            a = to_numeric(disp_values[("실적(누적)", "매출액")])
+            if ("실적-계획", "매출액") in disp_values.columns:
+                disp_values[("실적-계획", "매출액")] = (a - p).round(0).astype("Int64")
+            if ("달성률(%)", "매출액") in disp_values.columns:
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    disp_values[("달성률(%)", "매출액")] = np.where((~pd.isna(p)) & (p != 0), (a / p) * 100.0, np.nan)
+        
+
+
+        # ===== ④ 포맷(음수 빨간색): 판매량/단가/매출액=정수, 달성률=소수1자리 =====
+        body = disp_values.copy()
+        for col in body.columns:
+            if not (isinstance(col, tuple) and len(col) >= 2):
+                continue
+            metric = str(col[1]).strip()
+            if metric in ("판매량", "단가", "매출액"):
+                body[col] = body[col].apply(lambda x: fmt_signed(x, 0))
+
+        for metric in ["판매량", "매출액"]:
+            col = ("달성률(%)", metric)
+            if col in body.columns:
+                body[col] = body[col].apply(fmt_pct)
+
+        # 헤더+본문 결합
+        disp_vis = pd.concat([disp_vis.iloc[:2], body], ignore_index=True)
+
+
+        # ─ 스타일
+        styles = [
+            {'selector':'thead','props':[('display','none')]},
+            {'selector':'tbody tr:nth-child(1) td','props':[('text-align','center'),('font-weight','600')]},
+            {'selector':'tbody tr:nth-child(2) td','props':[('text-align','center'),('font-weight','600')]},
+            {'selector':'tbody td:nth-child(1)','props':[('width','6px'),('border-right','0')]},
+            {'selector':'tbody tr:nth-child(n+3) td','props':[('text-align','right')]},
+            {'selector':'tbody tr:nth-child(n+3) td:nth-child(2)','props':[('text-align','left')]},  # 구분
+
+            {'selector':'tbody td:nth-child(2)','props':[('min-width','400px'),('width','400px'),('white-space','nowrap')]},
+        ]
+
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+                'props': [('text-align','right')]
+               
+            }
+            for r in (3,4,5,6)
+        ]
+
+        styles += spacer_rules1
+
+        spacer_rules2 = [
+            {
+                'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+                'props': [('text-align','center')]
+               
+            }
+            for r in (7,8,12,13,19,20)
+        ]
+
+        styles += spacer_rules2
+
+        spacer_rules3 = [
+            {
+                'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+                'props': [('border-bottom','2px solid white')]
+               
+            }
+            for r in (1,3,4,5,6,7,8,9,12,13,14,16,18,19)
+        ]
+
+        styles += spacer_rules3
+
+        spacer_rules4 = [
+            {
+                'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+                'props': [('border-bottom','2px solid white')]
+               
+            }
+            for r in (1,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19)
+        ]
+
+
+
+        styles += spacer_rules4
+
+        spacer_rules5 = [
+            {
+                'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+                'props': [('border-left','3px solid gray')]
+               
+            }
+            for r in (3,4,5,6,7,8,9,10,12,13,14,15)
+        ]
+
+        styles += spacer_rules5
+
+        spacer_rules6 = [
+            {
+                'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+                'props': [('border-bottom','3px solid gray')]
+               
+            }
+            for r in (2,10,11,15,17)
+        ]
+
+        styles += spacer_rules6
+
+        spacer_rules7 = [
+            {
+                'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+                'props': [('border-bottom','3px solid gray')]
+               
+            }
+            for r in (2,11,17)
+        ]
+
+        styles += spacer_rules7
+
+        spacer_rules8 = [
+            {
+                'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+                'props': [('border-left','2px solid white')]
+               
+            }
+            for r in (1,2,11,16,17,18,19,20)
+        ]
+
+        styles += spacer_rules8
+
+        spacer_rules9 = [
+            {
+                'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+                'props': [('border-right','3px solid gray')]
+               
+            }
+            for r in range (3,21)
+        ]
+
+        styles += spacer_rules9
+
+
+        spacer_rules9 = [
+            {
+                'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+                'props': [('border-right','2px solid white')]
+               
+            }
+            for r in (3,4,6,7,9,10,12,13,15)
+        ]
+
+        styles += spacer_rules9
+
+        
+        # spacer_rules9 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+        #         'props': [('border-right','3px solid gray')]
+               
+        #     }
+        #     for r in (2,5,8,11,14,16)
+        # ]
+
+        # styles += spacer_rules9
+
+        # spacer_rules9 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
+        #         'props': [('border-right','3px solid gray')]
+               
+        #     }
+        #     for r in (2,5,8,11,14,16)
+        # ]
+
+        # styles += spacer_rules9
+
+        spacer_rules9 = [
+            {
+                'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
+                'props': [('border-bottom','3px solid gray')]
+               
+            }
+            for r in range (3,17)
+        ]
+
+        styles += spacer_rules9
+
+        spacer_rules9 = [
+            {
+                'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+                'props': [('border-top','3px solid gray')]
+               
+            }
+            for r in range (3,17)
+        ]
+
+        styles += spacer_rules9
+
+        # HTML 그대로 렌더(escape 안 함)해야 빨간색 표시가 보입니다.
+        display_styled_df(disp_vis, styles=styles, already_flat=True)
+
+    except Exception as e:
+        st.error(f"판매계획 및 실적 표 생성 중 오류: {e}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ---------------------------------------------------------------
+
+
+# =========================
 
 
 
@@ -3114,11 +3379,7 @@ with t2:
 #     pass
 
 # =========================
-# 연간사업계획
-# =========================
-# with t3:
-#     pass
-# =========================
+
 # Footer
 # =========================
 
