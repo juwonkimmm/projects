@@ -4589,7 +4589,195 @@ def fx_export_table(df_long: pd.DataFrame, year: int, month: int) -> Tuple[pd.Da
 
 
 ##### 포스코 對 JFE 입고가격 #####
+# modules/posco_jfe_price.py
+import pandas as pd
+import numpy as np
+import re
+from typing import Sequence, Tuple, List
 
+KIND_ORDER = ["탄소강", "합금강", ""]
+PARTY_ORDER = ["포스코", "JFE", "차이", "포스코 할인단가(원)", "환율"]
+
+_dyn_col_pat = re.compile(r"^(?P<m>\d{1,2})월\((?P<y>\d{4})\)$")
+
+def _month_shift(y: int, m: int, delta: int) -> Tuple[int, int]:
+    t = y * 12 + (m - 1) + delta
+    ny = t // 12
+    nm = t % 12 + 1
+    return int(ny), int(nm)
+
+def _parse_kind_party_item(s: str) -> Tuple[str, str, str]:
+    """
+    구분2를 (kind, party, item)으로 분해
+      - '탄소강_포스코_SWRCH45FS' -> ('탄소강','포스코','SWRCH45FS')
+      - '탄소강_포스코_변동폭(천원/톤)' -> ('탄소강','포스코','변동폭(천원/톤)')
+      - '탄소강_SWRCH45K-M' -> ('탄소강','JFE','SWRCH45K-M')
+      - '탄소강_(USD)' -> ('탄소강','JFE','(USD)')
+      - '탄소강_변동폭(USD/톤)' -> ('탄소강','JFE','변동폭(USD/톤)')
+      - '포스코 할인단가(원)' -> ('','포스코 할인단가(원)','')
+      - '환율' -> ('','환율','')
+      - '차이' -> kind는 이후 ffill로 보강, party='차이', item=''
+    """
+    if not isinstance(s, str):
+        return "", "", ""
+    s = s.strip()
+    if s in ("포스코 할인단가(원)", "환율"):
+        return "", s, ""
+    if s == "차이":
+        return np.nan, "차이", ""  # kind는 나중에 (연/월 그룹 내) ffill
+
+    # '탄소강_...' / '합금강_...'
+    parts = s.split("_")
+    if len(parts) == 1:
+        return "", s, ""
+    kind = parts[0]
+    rest = parts[1:]
+
+    # 포스코 패턴
+    if rest and rest[0] == "포스코":
+        party = "포스코"
+        item = "_".join(rest[1:]) if len(rest) > 1 else ""
+        return kind, party, item
+
+    # 그 외는 JFE로 분류
+    party = "JFE"
+    item = "_".join(rest)
+    return kind, party, item
+
+def _sort_index(idx: pd.MultiIndex) -> List[Tuple[str,str,str]]:
+    def key_fn(t):
+        k, p, i = t
+        k_rank = KIND_ORDER.index(k) if k in KIND_ORDER else len(KIND_ORDER)
+        p_rank = PARTY_ORDER.index(p) if p in PARTY_ORDER else len(PARTY_ORDER)
+        # 아이템은 그대로(사전식)
+        return (k_rank, p_rank, i)
+    return sorted([tuple(x) for x in idx], key=key_fn)
+
+def build_posco_jfe_price_wide(
+    df: pd.DataFrame,
+    sel_y: int,
+    sel_m: int,
+    group_name: str = "포스코 對 JFE 입고가격",
+    monthly_years: Sequence[int] = (2021, 2022, 2023, 2024)
+):
+    """
+    반환:
+      wide_df, col_order, hdr1_labels, hdr2_labels
+    - wide_df: index = (kind, party, item) / values = 표시용 문자열(실적 원문)
+    - 연도별 12월 = 'YYYY년 월평균', 동적 3칸 = 전전월/전월/선택월 'M월(YYYY)'
+    """
+    d = df.copy()
+    d = d[d["구분1"] == group_name].copy()
+
+    # 타입 정리
+    d["연도"] = pd.to_numeric(d["연도"], errors="coerce")
+    d["월"]   = pd.to_numeric(d["월"],   errors="coerce")
+
+    # (kind, party, item) 파싱
+    kp = d["구분2"].astype(str).apply(_parse_kind_party_item)
+    d["kind"]  = kp.apply(lambda x: x[0])
+    d["party"] = kp.apply(lambda x: x[1])
+    d["item"]  = kp.apply(lambda x: x[2])
+
+    # '차이'의 kind 보강: 같은 (연도,월) 그룹 내에서 직전의 비어있지 않은 kind로 ffill
+    d = d.sort_values(["연도", "월", "구분3"]).copy()
+    def _ffill_kind(group: pd.DataFrame) -> pd.DataFrame:
+        cur = None
+        kinds = []
+        for _, r in group.iterrows():
+            k = r["kind"]
+            if isinstance(k, str) and k != "":
+                cur = k
+            if pd.isna(k):  # 차이 라인에서만 NaN으로 들어옴
+                kinds.append(cur if cur is not None else "")
+            else:
+                kinds.append(k)
+        group["kind"] = kinds
+        return group
+    d = d.groupby(["연도","월"], as_index=False, group_keys=False).apply(_ffill_kind)
+
+    frames = []
+    col_order = []
+    hdr1_labels = []
+    hdr2_labels = []
+
+    # 1) 연도별 월평균(12월) 열
+    d_base = d[d["구분3"] == "월평균"]
+    for y in monthly_years:
+        dd = d_base[(d_base["연도"] == y) & (d_base["월"] == 12)]
+        if dd.empty:
+            col_order.append(f"{y}년 월평균")
+            hdr1_labels.append(f"{y}년")
+            hdr2_labels.append("월평균")
+            continue
+        p = dd.pivot_table(index=["kind","party","item"], values="실적", aggfunc="first")
+        p = p.rename(columns={"실적": f"{y}년 월평균"})
+        frames.append(p)
+        col_order.append(f"{y}년 월평균")
+        hdr1_labels.append(f"{y}년")
+        hdr2_labels.append("월평균")
+
+    # 2) 전전월/전월/선택월
+    prev2_y, prev2_m = _month_shift(sel_y, sel_m, -2)
+    prev_y,  prev_m  = _month_shift(sel_y, sel_m, -1)
+    dyn = [
+        (prev2_y, prev2_m, f"{prev2_m}월({prev2_y})", f"{prev2_m}월"),
+        (prev_y,  prev_m,  f"{prev_m}월({prev_y})",  f"{prev_m}월"),
+        (sel_y,   sel_m,   f"{sel_m}월({sel_y})",    f"{sel_m}월"),
+    ]
+    for y, m, col, sublab in dyn:
+        dd = d[(d["연도"] == y) & (d["월"] == m)]
+        if dd.empty:
+            col_order.append(col)
+            hdr1_labels.append(f"{sel_y}년")
+            hdr2_labels.append(sublab)
+            continue
+        p  = dd.pivot_table(index=["kind","party","item"], values="실적", aggfunc="first").rename(columns={"실적": col})
+        frames.append(p)
+        col_order.append(col)
+        hdr1_labels.append(f"{sel_y}년")
+        hdr2_labels.append(sublab)
+
+    # 3) 병합
+    wide = None
+    for f in frames:
+        wide = f if wide is None else wide.join(f, how="outer")
+
+    # === (기존: 3) 병합 이후) 아래로 교체 ===
+
+    # 4) '포스코 할인단가(원)' 행 보장 + 항상 첫 번째로
+    top_row = ("", "포스코 할인단가(원)", "")
+
+    if wide is None or wide.empty:
+        # 최소 골격을 만들고 우선 top_row를 추가
+        wide = pd.DataFrame(index=pd.MultiIndex.from_tuples([top_row],
+                                                            names=["kind","party","item"]))
+    else:
+        # 행이 없다면 생성(모든 열 NaN)
+        if top_row not in wide.index:
+            wide.loc[top_row, :] = np.nan
+
+    # 나머지 행들을 정렬(기존 규칙) 후, top_row를 맨 앞으로 재배치
+    ordered_rest = [idx for idx in _sort_index(wide.index) if idx != top_row]
+    wide = wide.reindex([top_row] + ordered_rest)
+
+    # 5) 컬럼 보장 + 순서 고정 (기존 그대로 유지)
+    for c in col_order:
+        if c not in wide.columns:
+            wide[c] = np.nan
+    wide = wide[col_order]
+
+
+    # 5) 컬럼 보장 + 순서 고정
+    for c in col_order:
+        if c not in wide.columns:
+            wide[c] = np.nan
+    wide = wide[col_order]
+
+    return wide, col_order, hdr1_labels, hdr2_labels
+
+
+##### 포스코 JFE 단가 #####
 def is_percent(x):
     return isinstance(x, str) and x.strip().endswith("%")
 
@@ -4778,11 +4966,15 @@ def build_posco_jfe_wide(df: pd.DataFrame, sel_y: int, sel_m: int,
 ##### 메이커별 입고추이 #####
 
 
+# ===== 공통 유틸 =====
 def _to_num(x):
-    if isinstance(x, (int, float)): return float(x)
+    if isinstance(x, (int, float, np.integer, np.floating)):
+        return float(x)
     s = str(x).replace(",", "").strip()
-    try: return float(s)
-    except: return np.nan
+    try:
+        return float(s)
+    except Exception:
+        return np.nan
 
 def _month_shift(y: int, m: int, delta: int):
     t = y * 12 + (m - 1) + delta
@@ -4790,135 +4982,181 @@ def _month_shift(y: int, m: int, delta: int):
     nm = t % 12 + 1
     return int(ny), int(nm)
 
+def _safe_series(obj, index):
+    if obj is None:
+        return pd.Series(index=index, dtype=float)
+    if isinstance(obj, pd.Series):
+        return obj.reindex(index).astype(float)
+    return pd.Series(index=index, dtype=float)
+
+def _share(series: pd.Series) -> pd.Series:
+    if not isinstance(series, pd.Series) or series.empty:
+        return pd.Series(index=series.index if isinstance(series, pd.Series) else [], dtype=float)
+    tot = float(series.sum(skipna=True))
+    if not np.isfinite(tot) or tot == 0:
+        return pd.Series(index=series.index, dtype=float)
+    return series / tot * 100.0
+
+def _thousand_out(x: float) -> float:
+    if not np.isfinite(x):
+        return np.nan
+    # 백의자리 반올림 후 1000으로 스케일다운
+    return round(float(x), -2) / 1000.0
+
+
+# ===== 메인 =====
 def build_maker_receipt_wide(
     df_raw: pd.DataFrame,
     sel_y: int,
     sel_m: int,
-    base_year: int | None = None,     # 기본은 sel_y-1
-    base_avg_mode: str = "mean",      # "mean" 또는 "december"
+    base_year: int | None = None,  # 기본은 sel_y-1
+    base_avg_mode: str = "mean",   # "mean" 또는 "december"
 ):
-    """
-    입력 df_raw: [구분1, 구분2(메이커), 구분3(중량/금액), 연도, 월, 실적]
-    반환:
-      wide (숫자 DF) : index = MultiIndex(구분=메이커/총계, 항목=중량/단가/매입비중)
-                       columns = MultiIndex(상단, 하단)
-                        상단: 'YY년', 'YYYY.M월'
-                        하단: '월평균_중량','월평균_단가','매입비중','중량'
-      cols_mi (MultiIndex) : 컬럼 구성(뷰에서 헤더 만들 때 활용)
-    """
+    # ========= 공통 도우미 =========
+    def _safe_series(s, idx):
+        """None이면 빈 시리즈, 있으면 idx로 reindex"""
+        if s is None:
+            return pd.Series(index=idx, dtype=float)
+        return pd.to_numeric(pd.Series(s), errors="coerce").reindex(idx)
+
+    def _price(amount_s: pd.Series, weight_s: pd.Series) -> pd.Series:
+        """(금액/중량)*1000; 중량<=0 또는 NaN은 NaN"""
+        w = pd.to_numeric(weight_s, errors="coerce")
+        a = pd.to_numeric(amount_s, errors="coerce")
+        w = w.where(w > 0)  # 0 -> NaN
+        return (a / w) * 1000.0
+
+    # ========= 데이터 준비 =========
     d = df_raw.copy()
     d = d[d["구분1"] == "메이커별 입고추이"].copy()
     d["연도"] = pd.to_numeric(d["연도"], errors="coerce")
-    d["월"]   = pd.to_numeric(d["월"],   errors="coerce")
-    d["실적"] = d["실적"].apply(_to_num)
+    d["월"]  = pd.to_numeric(d["월"],  errors="coerce")
+    d["실적"] = pd.to_numeric(d["실적"].apply(_to_num), errors="coerce")
 
-    makers = sorted(d["구분2"].dropna().unique())
+    fixed_order = ["포스코", "JFE", "세아창원특수강", "현대제철", "세아베스틸"]
+    makers_all  = list(d["구분2"].dropna().unique())
+    tail        = sorted([m for m in makers_all if m not in fixed_order])
+    makers      = fixed_order + tail
 
+    # 피벗
     w = d[d["구분3"] == "중량"].pivot_table(index="구분2", columns=["연도","월"], values="실적", aggfunc="sum")
     a = d[d["구분3"] == "금액"].pivot_table(index="구분2", columns=["연도","월"], values="실적", aggfunc="sum")
 
     if base_year is None:
         base_year = sel_y - 1
 
-    # 1) 기준년 월평균(또는 12월)
+    # 기준년 월평균(또는 12월)
     if base_avg_mode == "december":
-        base_weight = w.get((base_year, 12))
-        base_amount = a.get((base_year, 12))
+        base_weight = _safe_series(w.get((base_year, 12)), makers)
+        base_amount = _safe_series(a.get((base_year, 12)), makers)
     else:
-        base_weight = w.loc[:, w.columns.get_level_values(0) == base_year].mean(axis=1, skipna=True) if not w.empty else pd.Series(dtype=float)
-        base_amount = a.loc[:, a.columns.get_level_values(0) == base_year].mean(axis=1, skipna=True) if not a.empty else pd.Series(dtype=float)
-    if base_weight is None: base_weight = pd.Series(index=makers, dtype=float)
-    if base_amount is None: base_amount = pd.Series(index=makers, dtype=float)
+        if not w.empty:
+            mask_by = (w.columns.get_level_values(0) == base_year)
+            base_weight = (w.loc[:, mask_by].mean(axis=1, skipna=True) if mask_by.any()
+                           else pd.Series(index=makers, dtype=float))
+        else:
+            base_weight = pd.Series(index=makers, dtype=float)
+        if not a.empty:
+            mask_ay = (a.columns.get_level_values(0) == base_year)
+            base_amount = (a.loc[:, mask_ay].mean(axis=1, skipna=True) if mask_ay.any()
+                           else pd.Series(index=makers, dtype=float))
+        else:
+            base_amount = pd.Series(index=makers, dtype=float)
 
-    base_price = base_amount / base_weight
-    tot_bw = float(base_weight.sum(skipna=True)) if len(base_weight) else np.nan
-    base_share = (base_weight / tot_bw * 100.0) if tot_bw not in (0, np.nan) and tot_bw != 0 else pd.Series(index=makers, dtype=float)
+    base_weight = base_weight.reindex(makers)
+    base_amount = base_amount.reindex(makers)
+    base_share  = _share(base_weight)
 
-    # 2) 전월/전전월
-    prev_y,  prev_m  = _month_shift(sel_y, sel_m, -1)
-    prev2_y, prev2_m = _month_shift(sel_y, sel_m, -2)
-
-    def _month_w_s(y, m):
-        wt = w.get((y, m))
-        if wt is None: wt = pd.Series(index=makers, dtype=float)
-        tot = float(wt.sum(skipna=True)) if len(wt) else np.nan
-        sh  = (wt / tot * 100.0) if tot not in (0, np.nan) and tot != 0 else pd.Series(index=makers, dtype=float)
-        return wt, sh
-
-    prev2_w, prev2_s = _month_w_s(prev2_y, prev2_m)
-    prev_w,  prev_s  = _month_w_s(prev_y,  prev_m)
-
-    # 3) 선택연도 월평균(YTD)
+    # 선택연도 YTD 월평균(1~sel_m)
     if not w.empty:
         sel_mask = (w.columns.get_level_values(0) == sel_y) & (w.columns.get_level_values(1) <= sel_m)
-        sel_weight = w.loc[:, sel_mask].mean(axis=1, skipna=True) if sel_mask.any() else pd.Series(index=makers, dtype=float)
+        sel_weight = (w.loc[:, sel_mask].mean(axis=1, skipna=True) if sel_mask.any()
+                      else pd.Series(index=makers, dtype=float))
     else:
+        sel_mask = None
         sel_weight = pd.Series(index=makers, dtype=float)
-    tot_sw = float(sel_weight.sum(skipna=True)) if len(sel_weight) else np.nan
-    sel_share = (sel_weight / tot_sw * 100.0) if tot_sw not in (0, np.nan) and tot_sw != 0 else pd.Series(index=makers, dtype=float)
+    sel_weight = sel_weight.reindex(makers)
+    sel_share  = _share(sel_weight)
 
-    # 4) 컬럼 골격(항상 고정)
+    if not a.empty and sel_mask is not None and sel_mask.any():
+        sel_amount = a.loc[:, sel_mask].mean(axis=1, skipna=True).reindex(makers)
+    else:
+        sel_amount = pd.Series(index=makers, dtype=float)
+
+    # ===== 단가 계산(금액/중량*1000) =====
+    base_price = _price(base_amount, base_weight)  # 기준년도 월평균 단가
+    sel_price  = _price(sel_amount,  sel_weight)   # 선택년도 YTD 월평균 단가
+
+    def price_series(y, m):
+        aw = _safe_series(a.get((y, m)), makers)
+        ww = _safe_series(w.get((y, m)), makers)
+        return _price(aw, ww)  # 월 단가
+
+    # 전월/전전월/전전전월
+    prev_y,  prev_m  = _month_shift(sel_y, sel_m, -1)
+    prev2_y, prev2_m = _month_shift(sel_y, sel_m, -2)
+    prev3_y, prev3_m = _month_shift(sel_y, sel_m, -3)
+
+    prev_w  = _safe_series(w.get((prev_y,  prev_m)),  makers)
+    prev2_w = _safe_series(w.get((prev2_y, prev2_m)), makers)
+    prev_s  = _share(prev_w)
+    prev2_s = _share(prev2_w)
+
+    p_prev2 = price_series(prev2_y, prev2_m)
+    p_prev  = price_series(prev_y,  prev_m)
+    p_prev3 = price_series(prev3_y, prev3_m)
+
+    diff_prev2 = p_prev2 - p_prev3  # 전전월 - 전전전월
+    diff_prev  = p_prev  - p_prev2  # 전월 - 전전월
+
+    # ===== 컬럼 정의 =====
     col_defs = [
-        (f"'{str(base_year)[-2:]}년", "월평균_중량"),
-        (f"'{str(base_year)[-2:]}년", "월평균_단가"),
+        (f"'{str(base_year)[-2:]}년", "월평균"),
         (f"'{str(base_year)[-2:]}년", "매입비중"),
-        (f"{prev2_y}.{prev2_m}월",    "중량"),
-        (f"{prev2_y}.{prev2_m}월",    "매입비중"),
-        (f"{prev_y}.{prev_m}월",      "중량"),
-        (f"{prev_y}.{prev_m}월",      "매입비중"),
-        (f"'{str(sel_y)[-2:]}년",     "월평균_중량"),
-        (f"'{str(sel_y)[-2:]}년",     "매입비중"),
+        (f"{prev2_y}.{prev2_m}월", "중량"),
+        (f"{prev2_y}.{prev2_m}월", "매입비중"),
+        (f"{prev_y}.{prev_m}월", "중량"),
+        (f"{prev_y}.{prev_m}월", "매입비중"),
+        (f"'{str(sel_y)[-2:]}년", "월평균"),
+        (f"'{str(sel_y)[-2:]}년", "매입비중"),
     ]
     cols_mi = pd.MultiIndex.from_tuples(col_defs, names=["상단","하단"])
 
-    # 5) 숫자 DF 조립
+    # ===== 표 조립 (총계 제거) =====
     data = {}
     for mk in makers:
+        # 중량
         data[(mk, "중량")] = [
-            base_weight.get(mk, np.nan), np.nan, base_share.get(mk, np.nan),
-            prev2_w.get(mk, np.nan), prev2_s.get(mk, np.nan),
-            prev_w.get(mk,  np.nan), prev_s.get(mk,  np.nan),
-            sel_weight.get(mk, np.nan), sel_share.get(mk, np.nan),
+            base_weight.get(mk, np.nan), base_share.get(mk, np.nan),
+            prev2_w.get(mk, np.nan),     prev2_s.get(mk, np.nan),
+            prev_w.get(mk, np.nan),      prev_s.get(mk, np.nan),
+            sel_weight.get(mk, np.nan),  sel_share.get(mk, np.nan),
         ]
+        # 단가 (월평균/월 자리에 값, 비중 자리는 NaN)
         data[(mk, "단가")] = [
-            np.nan, base_price.get(mk, np.nan), np.nan,
-            np.nan, np.nan,
-            np.nan, np.nan,
-            np.nan, np.nan,
+            base_price.get(mk, np.nan),  np.nan,
+            p_prev2.get(mk, np.nan),     np.nan,
+            p_prev.get(mk, np.nan),      np.nan,
+            sel_price.get(mk, np.nan),   np.nan,
         ]
-        data[(mk, "매입비중")] = [
-            np.nan, np.nan, base_share.get(mk, np.nan),
-            np.nan, prev2_s.get(mk, np.nan),
-            np.nan, prev_s.get(mk,  np.nan),
-            np.nan, sel_share.get(mk, np.nan),
-        ]
-
-    # 총계
-    def _sum(s): return float(s.sum(skipna=True)) if isinstance(s, pd.Series) else np.nan
-    total_price = float((base_amount.sum(skipna=True) / base_weight.sum(skipna=True))) if base_weight.sum(skipna=True) not in (0, np.nan) and base_weight.sum(skipna=True) != 0 else np.nan
-
-    data[("총계","중량")]     = [_sum(base_weight), np.nan, 100.0, _sum(prev2_w), 100.0, _sum(prev_w), 100.0, _sum(sel_weight), 100.0]
-    data[("총계","단가")]     = [np.nan, total_price, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan]
-    data[("총계","매입비중")] = [np.nan, np.nan, 100.0, np.nan, 100.0, np.nan, 100.0, np.nan, 100.0]
+        # 증감 (단가 차)
+        r = [np.nan] * len(col_defs)
+        r[2] = diff_prev2.get(mk, np.nan)  # 전전월 증감
+        r[4] = diff_prev.get(mk, np.nan)   # 전월 증감
+        data[(mk, "증감")] = r
 
     wide = pd.DataFrame.from_dict(data, orient="index")
-    # 컬럼 골격 강제 + MultiIndex 부여
     wide = wide.reindex(columns=range(len(col_defs)))
     wide.columns = cols_mi
 
-    # 인덱스 MultiIndex 보장
-    if not isinstance(wide.index, pd.MultiIndex):
-        new_idx = []
-        for k in wide.index:
-            if isinstance(k, tuple) and len(k)==2:
-                new_idx.append(k)
-            else:
-                new_idx.append((str(k), ""))
-        wide.index = pd.MultiIndex.from_tuples(new_idx, names=["구분","항목"])
-    else:
-        wide.index = wide.index.set_names(["구분","항목"])
+    ordered_index = []
+    for mk in makers:
+        ordered_index.extend([(mk,"중량"), (mk,"단가"), (mk,"증감")])
+    wide = wide.reindex(pd.MultiIndex.from_tuples(ordered_index, names=["구분","항목"]))
+
+    # 혹시 남은 ±inf 제거
+    wide = wide.replace([np.inf, -np.inf], np.nan)
 
     return wide, cols_mi
-
 
 

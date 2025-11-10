@@ -6,6 +6,7 @@ import warnings
 import modules  
 import io
 import re
+from itertools import groupby  
 warnings.filterwarnings('ignore')
 st.set_page_config(layout="wide", initial_sidebar_state="expanded")
 
@@ -843,7 +844,117 @@ with t2:
 
 with t3:
 
-    st.markdown("<h4>2) 포스코 對 JFE 입고가격 </h4>", unsafe_allow_html=True)
+    st.markdown("<h4>1) 포스코 對 JFE 입고가격 </h4>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:right; font-size:13px; color:#666;'>[단위: 톤, 백만원]</div>", unsafe_allow_html=True)
+
+    try:
+        file_name = st.secrets["sheets"]["f_23"]  # 파일 경로/시크릿 키는 환경에 맞게
+        df_src = pd.read_csv(file_name, dtype=str)
+
+        # 숫자필드는 모듈에서 처리하므로 여기서는 최소 정리만
+        df_src["연도"] = pd.to_numeric(df_src["연도"], errors="coerce")
+        df_src["월"]   = pd.to_numeric(df_src["월"],   errors="coerce")
+
+        sel_y = int(st.session_state["year"])
+        sel_m = int(st.session_state["month"])
+
+        wide, col_order, hdr1_labels, hdr2_labels = modules.build_posco_jfe_price_wide(
+            df_src, sel_y, sel_m,
+            group_name="포스코 對 JFE 입고가격",
+            monthly_years=(2021, 2022, 2023, 2024)
+        )
+
+        # === 표시용 변환: 문자열은 그대로, NaN만 빈칸 ===
+        vis = wide.copy()
+        for c in vis.columns:
+            vis[c] = [("" if (isinstance(x, float) and pd.isna(x)) else x) for x in vis[c]]
+
+        # 인덱스 → 컬럼
+        disp = vis.reset_index()
+        disp.rename(columns={"kind":"구분","party":"세부","item":"항목"}, inplace=True)
+
+        # 스페이서(첫 칸)
+        SPACER = "__spacer__"
+        disp.insert(0, SPACER, "")
+
+        cols = disp.columns.tolist()
+        data_cols = [c for c in cols if c not in (SPACER, "구분", "세부", "항목")]
+
+        # 2행 가짜 헤더
+        dyn_pat = re.compile(r"^(?P<m>\d{1,2})월\((?P<y>\d{4})\)$")
+
+        hdr1 = ["", "", "", ""]
+        for c in data_cols:
+            if c.endswith("년 월평균"):
+                hdr1.append(c[:4] + "년")
+            else:
+                m = dyn_pat.match(c)
+                hdr1.append(f"{sel_y}년" if m else "")
+
+        hdr2 = ["", "", "구분", ""]
+        for c in data_cols:
+            if c.endswith("년 월평균"):
+                hdr2.append("월평균")
+            else:
+                m = dyn_pat.match(c)
+                hdr2.append(f"{int(m.group('m'))}월" if m else "")
+
+        hdr_df  = pd.DataFrame([hdr1, hdr2], columns=cols)
+        disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
+
+        # ===== 테이블 스타일 =====
+        styles = [
+            {'selector': 'thead', 'props': [('display','none')]},
+
+            # 가짜 헤더 2행
+            {'selector': 'tbody tr:nth-child(1) td', 'props': [('text-align','center'),('font-weight','700'),('padding','6px 8px')]},
+            {'selector': 'tbody tr:nth-child(2) td', 'props': [('text-align','center'),('font-weight','700'),('padding','8px 8px')]},
+
+            # 본문 중앙정렬
+            {'selector': 'tbody tr:nth-child(n+3) td', 'props': [('text-align','center')]},
+
+            # 좌측 설명 칸
+            {'selector': 'tbody tr td:nth-child(1)', 'props': [('text-align','center'),('white-space','nowrap')]},
+            {'selector': 'tbody tr td:nth-child(2)', 'props': [('text-align','center'),('white-space','nowrap')]},
+            {'selector': 'tbody tr td:nth-child(3)', 'props': [('text-align','center'),('white-space','nowrap')]},
+            {'selector': 'tbody tr td:nth-child(4)', 'props': [('text-align','center'),('white-space','nowrap')]},
+
+            # 헤더 하단 굵은선
+            {'selector': 'tbody tr:nth-child(2) td', 'props': [('border-bottom','3px solid gray !important')]},
+
+            # 항목(4번째) 오른쪽 굵은 경계
+            {'selector': 'tbody tr:nth-child(n+1) td:nth-child(4)', 'props':[('border-right','3px solid gray !important')]},
+        ]
+
+        data_start = 5
+        n_cols = len(cols)
+        for j in range(data_start, n_cols+1):
+            styles += [
+                {'selector': f'tbody tr:nth-child(1) td:nth-child({j})', 'props':[('border-top','3px solid gray !important')]},
+                {'selector': f'tbody tr:nth-child(n+3) td:nth-child({j})', 'props':[('border-right','2px solid #eee')]},
+            ]
+
+        # 필요 시 구분선(섹션 경계)을 추가하고 싶다면 여기서 조건부로 row 찾은 뒤 border-bottom 주입 가능
+
+        # 음수/괄호 붉은색은 사용 안함(변동폭 화살표는 문자열)
+        def _noop(_): return ''
+
+        row_labels = disp_vis.index[2:]
+        col_labels = disp_vis.columns[(data_start-1):]
+
+        display_styled_df(
+            disp_vis,
+            styles=styles,
+            already_flat=True,
+            applymap_rules=[(_noop, (row_labels, col_labels))]
+        )
+
+    except Exception as e:
+        st.error(f"포스코 對 JFE 입고가격 생성 오류: {e}")
+
+    st.divider()
+
+    st.markdown("<h4>2) 포스코/JFE 투입비중 </h4>", unsafe_allow_html=True)
     st.markdown("<div style='text-align:right; font-size:13px; color:#666;'>[단위: 톤, 백만원]</div>", unsafe_allow_html=True)
 
     try:
@@ -910,7 +1021,7 @@ with t3:
                     hdr1.append("")
 
 
-        hdr2 = ["", "구분", "세부", "항목"]
+        hdr2 = ["", "", "구분", ""]
         for c in data_cols:
             if c.endswith("년 월평균"):
                 hdr2.append("월평균")
@@ -1054,8 +1165,150 @@ with t3:
 
     st.divider()
 
+    st.markdown("<h4>3) 메이커별 입고추이 </h4>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:right; font-size:13px; color:#666;'>[단위: 톤, 톤/천원]</div>", unsafe_allow_html=True)
+
+    import itertools  
 
 
+    try:
+        # 1) 데이터
+        file_name = st.secrets["sheets"]["f_25"]
+        df_src = pd.read_csv(file_name, dtype=str)
+        df_src["연도"] = pd.to_numeric(df_src["연도"], errors="coerce")
+        df_src["월"]   = pd.to_numeric(df_src["월"],   errors="coerce")
+
+        # 2) 선택 연월
+        sel_y = int(st.session_state["year"])
+        sel_m = int(st.session_state["month"])
+
+
+
+        wide, cols_mi = modules.build_maker_receipt_wide(df_src, sel_y, sel_m, base_year=sel_y-1)
+
+        # ===== 표시 포맷 =====
+        def _fmt_number(x):
+            if pd.isna(x): 
+                return ""
+            iv = int(round(float(x)))
+            return f"{iv:,}"
+
+        def fmt_cell(idx, col, v):
+
+            if pd.isna(v):
+                return ""
+
+            item = idx[1]        # 중량/단가/증감
+            lower = col[1]       # 월평균/매입비중/중량
+
+            # 매입비중
+            if lower == "매입비중":
+                x = float(v)
+                return f"{x:.1f}%" if x >= 0 else f"({abs(x):.1f}%)"
+
+            # 중량/월평균: 백의자리 반올림 후 1000으로 축약
+            if item == "중량" and lower in ("월평균", "중량"):
+                x = modules._thousand_out(float(v))
+                if pd.isna(x):
+                    return ""
+                return _fmt_number(x)
+            
+            if item == "단가" and lower in ("월평균","중량"):
+                x = modules._thousand_out(float(v))
+                if pd.isna(x):
+                    return ""
+                return _fmt_number(x)
+
+            # 증감
+            if item == "증감" and lower in ("중량",):
+                iv = modules._thousand_out(float(v))
+                if iv > 0:
+                    return f'<span style="color:#1f77b4;">▲{abs(iv):,}</span>'
+                elif iv < 0:
+                    return f'<span style="color:#d62728;">▼{abs(iv):,}</span>'
+                else:
+                    return "0"
+
+            # 단가 행은 값 표시 안 함(요구 레이아웃 유지용)
+            return ""
+
+        # 숫자 → 문자열(HTML 포함)
+        body = wide.copy()
+        for col in body.columns:
+            for idx in body.index:
+                body.at[idx, col] = fmt_cell(idx, col, body.at[idx, col])
+
+        # ===== 가짜 헤더 2행 구성 =====
+        SPACER = "__spacer__"
+        disp = body.reset_index()
+        disp.insert(0, SPACER, "")
+        cols = disp.columns.tolist()
+
+        hdr1 = ["", "구분", "항목"] + [c[0] for c in cols_mi]
+        hdr2 = ["", "구분", "항목"] + [c[1] for c in cols_mi]
+
+        hdr_df   = pd.DataFrame([hdr1, hdr2], columns=cols)
+        disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
+
+        # ===== CSS =====
+        n_fixed = 3  # (스페이서, 구분, 항목)
+        top_labels = [c[0] for c in cols_mi]
+        group_edges, j = [], n_fixed
+        for _, g in groupby(top_labels):
+            g_len = len(list(g))
+            start = j + 1
+            end   = j + g_len
+            group_edges.append((start, end))
+            j = end
+
+        styles = [
+            {'selector': 'thead', 'props': [('display','none')]},
+
+            # 헤더 2행
+            {'selector': 'tbody tr:nth-child(1) td', 'props': [
+                ('text-align','center'),('font-weight','700'),('padding','6px 8px')
+            ]},
+            {'selector': 'tbody tr:nth-child(2) td', 'props': [
+                ('text-align','center'),('font-weight','700'),('padding','8px 8px'),
+                ('border-bottom','3px solid gray !important')
+            ]},
+
+            # 데이터 정렬
+            {'selector': 'tbody tr:nth-child(n+3) td', 'props': [('text-align','right')]},
+            {'selector': 'tbody tr td:nth-child(1)', 'props': [('text-align','left'),('white-space','nowrap')]},
+            {'selector': 'tbody tr td:nth-child(2)', 'props': [('text-align','left'),('white-space','nowrap')]},
+            {'selector': 'tbody tr td:nth-child(3)', 'props': [('text-align','left'),('white-space','nowrap')]},
+
+            # '항목' 우측 굵은 세로선
+            {'selector': 'tbody tr:nth-child(n+1) td:nth-child(3)', 'props':[('border-right','3px solid gray !important')]},
+        ]
+
+        # 헤더 최상단 라인
+        for k in range(n_fixed+1, len(cols)+1):
+            styles.append({'selector': f'tbody tr:nth-child(1) td:nth-child({k})',
+                        'props':[('border-top','3px solid gray !important')]})
+
+        # 그룹 경계선
+        for (_, end) in group_edges:
+            styles.append({'selector': f'tbody tr:nth-child(n+1) td:nth-child({end})',
+                        'props':[('border-right','3px solid gray !important')]})
+
+        # 줄무늬
+        # styles.append({'selector': 'tbody tr:nth-child(odd):nth-child(n+3)', 'props':[('background-color','#fafafa')]})
+
+        # ===== 출력 =====
+        # display_styled_df는 HTML 이스케이프 인자를 받지 않는다고 하셨으니 그대로 사용합니다.
+        display_styled_df(
+            disp_vis,
+            styles=styles,
+            already_flat=True,
+        )
+
+
+    except Exception as e:
+        st.error(f"메이커별 입고추이 표 생성 오류: {e}")
+
+    st.divider()
 
 
 
