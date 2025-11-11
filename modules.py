@@ -4335,8 +4335,8 @@ def create_profit_month_block_table(year: int, month: int, df_raw: pd.DataFrame)
     out.loc[ is_pct_row, num_cols] = out.loc[ is_pct_row, num_cols].round(1)
     
     # ── 표시 반올림 완료 후, 복제 삽입 ──
-    out = _dup_row_before(out, src_label="판매비",  before_label="내수운반")  # 판매비를 내수운반 위에 한 번 더
-    out = _dup_row_before(out, src_label="판매량", before_label="내수")      # 판매량을 내수 위에 한 번 더
+    out = _dup_row_before(out, src_label="판매비",  before_label="내수운반")  
+    out = _dup_row_before(out, src_label="판매량", before_label="내수")      
 
     return out
 
@@ -4358,131 +4358,6 @@ def _to_num(s) -> pd.Series:
     return pd.to_numeric(pd.Series(s).astype(str).str.replace(',', '', regex=False),
                          errors='coerce')
 
-# ── 핵심 계산: 수출 환율 차이 테이블(세로형 데이터 → 표)
-# def calc_export_fx_diff(
-#     df_long: pd.DataFrame,
-#     year: int,
-#     month: int,
-#     currency_order: Iterable[str] = ("USD", "JPY", "CNY"),
-# ) -> pd.DataFrame:
-#     """
-#     기대 입력(세로형):
-#       구분1=통화, 구분2=항목(중량/외화공급가액/원화공급가액), 연도, 월, 실적
-#     계산:
-#       환율 = 원화공급가액 ÷ 외화공급가액
-#       차이단가 = 당월환율 - 전월환율  (소수1자리)
-#       영향금액(천원) = 당월 외화공급가액 × 차이단가
-#     반환: 표(DataFrame) — 컬럼은 'prev_중량' ... 'curr_원화공급가액' 등
-#     """
-#     df = df_long.copy()
-#     df['연도'] = pd.to_numeric(df['연도'], errors='coerce').fillna(0).astype(int)
-#     df['월']   = pd.to_numeric(df['월'], errors='coerce').fillna(0).astype(int)
-#     df['구분1'] = df['구분1'].astype(str)
-#     df['구분2'] = df['구분2'].astype(str)
-#     df['실적']  = _to_num(df['실적'])
-
-#     py, pm, prev_lab, curr_lab = month_labels(year, month)
-
-#     # 대상 기간만
-#     need = df[df['연도'].isin([py, year]) & df['월'].isin([pm, month])]
-#     pv = need.pivot_table(index=['구분1','연도','월'],
-#                           columns='구분2', values='실적', aggfunc='sum').reset_index()
-
-#     for c in ['중량','외화공급가액','원화공급가액']:
-#         if c not in pv.columns: pv[c] = 0.0
-
-#     pv['환율'] = np.where(pv['외화공급가액']!=0, pv['원화공급가액']/pv['외화공급가액'], 0.0)
-
-#     prev = pv[(pv['연도']==py) & (pv['월']==pm)].drop(columns=['연도','월']).add_prefix('prev_')
-#     curr = pv[(pv['연도']==year) & (pv['월']==month)].drop(columns=['연도','월']).add_prefix('curr_')
-
-#     m = pd.merge(prev, curr, left_on='prev_구분1', right_on='curr_구분1', how='outer')
-#     m['구분'] = m['curr_구분1'].fillna(m['prev_구분1'])
-#     m = m.fillna(0)
-
-#     m['차이단가'] = (m['curr_환율'] - m['prev_환율']).round(1)
-#     m['영향금액'] = np.round(m['curr_외화공급가액'] * m['차이단가'], 0)
-
-#     disp = pd.DataFrame({
-#         '구분'                       : m['구분'],
-#         f'{prev_lab}_중량'           : m['prev_중량'],
-#         f'{prev_lab}_외화공급가액'   : m['prev_외화공급가액'],
-#         f'{prev_lab}_환율'           : m['prev_환율'],
-#         f'{prev_lab}_원화공급가액'   : m['prev_원화공급가액'],
-#         f'{curr_lab}_중량'           : m['curr_중량'],
-#         f'{curr_lab}_외화공급가액'   : m['curr_외화공급가액'],
-#         f'{curr_lab}_환율'           : m['curr_환율'],
-#         f'{curr_lab}_원화공급가액'   : m['curr_원화공급가액'],
-#         '차이단가'                   : m['차이단가'],
-#         '영향금액'                   : m['영향금액'],
-#     })
-
-#     order = list(currency_order)
-#     disp['__o__'] = disp['구분'].apply(lambda x: order.index(x) if x in order else 99)
-#     disp = disp.sort_values(['__o__','구분']).drop(columns='__o__')
-
-#     total = pd.DataFrame([{
-#         '구분':'총계',
-#         **{c: disp[c].sum() for c in disp.columns if c not in ['구분'] and not c.endswith('환율')},
-#         '차이단가': 0,
-#     }])
-
-#     return pd.concat([disp, total], ignore_index=True)
-
-# ── 표시용 스타일(이미지와 유사)
-# def style_export_fx_diff(df_disp: pd.DataFrame) -> "pd.io.formats.style.Styler":
-#     import pandas as pd
-
-#     # 멀티헤더 구성
-#     cols = [('구분','')]
-#     keys = list(df_disp.columns)
-#     prev_block = [c for c in keys if ('_중량' in c or '_외화공급가액' in c or '_환율' in c or '_원화공급가액' in c) and '차이' not in c]
-#     prev_label = sorted({c.split('_')[0] for c in prev_block})[0]  # ex) '7월'
-#     curr_label = sorted({c.split('_')[0] for c in prev_block})[-1] # ex) '8월'
-
-#     def block(label):
-#         return [(label,'중량'),(label,'외화공급가액'),(label,'환율'),(label,'원화공급가액')]
-
-#     cols += block(prev_label) + block(curr_label) + [('환율차이','차이단가'), ('환율차이','영향금액')]
-
-#     df = df_disp.copy()
-#     df.columns = ['구분'] + \
-#                  [f'{prev_label}_중량', f'{prev_label}_외화공급가액', f'{prev_label}_환율', f'{prev_label}_원화공급가액',
-#                   f'{curr_label}_중량', f'{curr_label}_외화공급가액', f'{curr_label}_환율', f'{curr_label}_원화공급가액',
-#                   '차이단가', '영향금액']
-#     df.columns = pd.MultiIndex.from_tuples(cols)
-
-#     def fmt(x):
-#         import numpy as np
-#         if pd.isna(x): return ""
-#         if isinstance(x, (int,float,np.integer,np.floating)):
-#             return f"{x:,.0f}"
-#         return x
-
-#     total_mask = df[('구분','')] == '총계'
-#     sty = (df.style
-#            .format(fmt)
-#            .set_table_styles([
-#                {'selector':'th.col_heading.level0','props':[('text-align','center'),('font-weight','700')]},
-#                {'selector':'th.col_heading.level1','props':[('text-align','center'),('font-weight','700')]},
-#                {'selector':'td','props':[('text-align','right')]},
-#                {'selector':'th.row_heading','props':[('text-align','left')]}
-#            ])
-#            .set_properties(subset=[('구분','')], **{'text-align':'left','white-space':'nowrap'})
-#            .set_properties(subset=pd.IndexSlice[total_mask, :], **{'font-weight':'700'})
-#     )
-
-#     # 블럭 경계선(이전/현재 구분)
-#     def add_border(st, nth):
-#         return st.set_table_styles([
-#             {'selector': f'th.col_heading.level1:nth-child({nth})','props':[('border-right','3px solid #888 !important')]},
-#             {'selector': f'td:nth-child({nth})','props':[('border-right','3px solid #888 !important')]}
-#         ], overwrite=False)
-
-#     # 멀티헤더 순서: 1=구분, 2~5(prev), 6~9(curr), 10~11(환율차이)
-#     sty = add_border(sty, 5)
-#     sty = add_border(sty, 9)
-#     return sty
 
 ###ver2
 
@@ -5159,4 +5034,580 @@ def build_maker_receipt_wide(
 
     return wide, cols_mi
 
+##### 제조 가공비 #####
 
+from typing import Tuple, Dict, Optional
+
+
+# ===================== 유틸 =====================
+def month_shift(y: int, m: int, delta: int) -> Tuple[int, int]:
+    t = y * 12 + (m - 1) + delta
+    return t // 12, t % 12 + 1
+
+def _num(s):
+    if isinstance(s, pd.Series):
+        s = s.astype(str).str.replace(",", "", regex=False).str.strip()
+        return pd.to_numeric(s, errors="coerce")
+    return pd.to_numeric(str(s).replace(",", "").strip(), errors="coerce")
+
+def _pick_col(cols, candidates):
+
+    for c in candidates:
+        if c in cols:
+            return c
+    low = {c.lower(): c for c in cols}
+    for c in candidates:
+        if c.lower() in low:
+            return low[c.lower()]
+
+    for pat in candidates:
+        rx = re.compile(pat, flags=re.I)
+        for c in cols:
+            if rx.search(str(c)):
+                return c
+    return None
+
+
+
+def _to_wide(df_src: pd.DataFrame) -> pd.DataFrame:
+
+    cols = list(df_src.columns)
+    c_y  = _pick_col(cols, ["연도", "년도", "year"])
+    c_m  = _pick_col(cols, ["월", "month"])
+    c_it = _pick_col(cols, ["구분1", "항목", "대분류"])
+    c_site = _pick_col(cols, ["구분3", "사업장", "공장", "Site"])
+    c_val  = _pick_col(cols, ["실적", "금액", "비용", "원가", "Amount", "AMT"])
+
+    if not all([c_y, c_m, c_it, c_site, c_val]):
+        raise ValueError("필수 컬럼(연도,월,구분1,구분3,실적)을 찾을 수 없습니다.")
+
+    df = df_src.copy()
+    df[c_y]   = _num(df[c_y])
+    df[c_m]   = _num(df[c_m])
+    df[c_val] = _num(df[c_val]).fillna(0)
+
+    def _site_norm(s: str) -> str:
+        s = str(s).strip()
+        if "포항" in s :
+            return "포항"
+        if "충주2" in s :
+            return "충주2"
+        if "충주" in s:
+            return "충주"
+        return "기타"
+
+    df["__site__"] = df[c_site].map(_site_norm)
+    df = df[df["__site__"].isin(["포항", "충주", "충주2"])]
+
+    pv = (
+        df.groupby([c_y, c_m, c_it, "__site__"])[c_val].sum().reset_index()
+          .pivot(index=[c_y, c_m, c_it], columns="__site__", values=c_val)
+          .reset_index()
+    )
+    for c in ["포항", "충주", "충주2"]:
+        if c not in pv.columns:
+            pv[c] = 0.0
+
+    pv.rename(columns={c_y: "연도", c_m: "월", c_it: "항목"}, inplace=True)
+    pv["계"] = pv[["포항", "충주", "충주2"]].sum(axis=1)
+    return pv[["연도", "월", "항목", "포항", "충주", "충주2", "계"]]
+
+
+# ===================== 월 스냅샷(요청된 행 순서로) =====================
+_ORDER = [
+    "부재료비",
+    "급료와임금",
+    "상여금",
+    "잡급",
+    "퇴직급여충당금",
+    "제조노무비",
+    "전력비",
+    "수도료",
+    "감가상각비",
+    "수선비",
+    "소모품비",
+    "복리후생비",
+    "지급임차료",
+    "지급수수료",
+    "외주용역비",
+    "외주가공비",
+    "기타",
+    "제조경비",
+    "총합",
+    "원재투입중량",
+    "투입중량 원단위(천원)",
+]
+
+_LABOR = ["급료와임금", "상여금", "잡급", "퇴직급여충당금"]
+_OH    = ["전력비","수도료","감가상각비","수선비","소모품비","복리후생비",
+          "지급임차료","지급수수료","외주용역비","외주가공비","기타"]
+
+def _month_snapshot(df_wide: pd.DataFrame, y: int, m: int) -> pd.DataFrame:
+    """특정 연월의 요구 행 순서 스냅샷 생성"""
+    d = df_wide[(df_wide["연도"] == y) & (df_wide["월"] == m)].copy()
+
+    # 기본 항목 합산
+    base = d.groupby("항목")[["포항","충주","충주2","계"]].sum()
+
+    # 파생 항목 계산
+    def _row_sum(names):
+        if not names: 
+            return pd.Series([0,0,0,0], index=["포항","충주","충주2","계"])
+        sub = base.reindex(names).fillna(0)
+        return sub.sum()
+
+    # 제조노무비, 제조경비, 총합
+    labor = _row_sum(_LABOR)
+    oh    = _row_sum(_OH)
+    # 부재료비가 없을 수도 있으므로 보정
+    material = base.reindex(["부재료비"]).fillna(0).sum()
+    total = labor.add(oh, fill_value=0).add(material, fill_value=0)
+
+    # 원재투입중량 (항목명 그대로 존재)
+    weight = d[d["항목"]=="원재투입중량"][["포항","충주","충주2","계"]].sum()
+    if weight.empty:
+        weight = pd.Series([np.nan]*4, index=["포항","충주","충주2","계"])
+
+    # 원단위(천원) = 총합(백만원) * 1000 / 원재투입중량
+    unit = total * 1000.0 / weight.replace({0: np.nan})
+
+    # 순서대로 테이블 만들기
+    rows = {}
+    for name in _ORDER:
+        if name == "제조노무비":
+            rows[name] = labor
+        elif name == "제조경비":
+            rows[name] = oh
+        elif name == "총합":
+            rows[name] = total
+        elif name == "원재투입중량":
+            rows[name] = weight
+        elif name == "투입중량 원단위(천원)":
+            rows[name] = unit
+        else:
+            rows[name] = base.reindex([name]).fillna(0).sum()
+
+    snap = pd.DataFrame(rows).T[["포항","충주","충주2","계"]]
+    snap.index.name = "구분"
+    return snap
+
+
+# ===================== 최종 표 =====================
+def _make_table(prev_snap: pd.DataFrame, curr_snap: pd.DataFrame) -> pd.DataFrame:
+    idx = prev_snap.index.union(curr_snap.index)
+    prev = prev_snap.reindex(idx).fillna(0.0)
+    curr = curr_snap.reindex(idx).fillna(0.0)
+    diff = curr - prev
+
+    prev.columns = pd.MultiIndex.from_product([["전월"], prev.columns])
+    curr.columns = pd.MultiIndex.from_product([["당월"], curr.columns])
+    diff.columns = pd.MultiIndex.from_product([["전월대비"], diff.columns])
+
+    out = pd.concat([prev, curr, diff], axis=1).reset_index()
+    # 명시적으로 by 지정 → sort_values 에러 방지
+    order_map = {name: i for i, name in enumerate(_ORDER)}
+    out["__ord__"] = out["구분"].map(order_map).fillna(9999)
+    out = out.sort_values(by="__ord__").drop(columns="__ord__").reset_index(drop=True)
+    return out
+
+
+def build_mfg_cost_table(df_src: pd.DataFrame, sel_y: int, sel_m: int):
+
+    wide = _to_wide(df_src)
+
+    prev_y, prev_m = month_shift(sel_y, sel_m, -1)
+    prev_snap = _month_snapshot(wide, prev_y, prev_m)
+    curr_snap = _month_snapshot(wide, sel_y, sel_m)
+
+    disp = _make_table(prev_snap, curr_snap)
+    meta = dict(prev_y=prev_y, prev_m=prev_m, sel_y=sel_y, sel_m=sel_m)
+    return disp, meta
+
+
+
+##### 판매비와 인건비 #####
+
+import pandas as pd
+import numpy as np
+from typing import Tuple, Dict, Optional
+
+# ===================== 유틸 =====================
+
+import re
+
+def _norm_txt(s: str) -> str:
+    return re.sub(r"\s+", "", str(s)).lower()
+
+# 판매량 별칭들: 필요 시 여기에 더 추가 가능
+_SALES_ALIASES = [
+   "판매량(제품)"
+]
+
+def _find_sales_key(index_like) -> Optional[str]:
+    """
+    Series.index 또는 DataFrame 컬럼명 리스트에서 '판매량' 의미의 키를 찾아 반환.
+    없으면 None.
+    """
+    idx = [str(x) for x in index_like]
+    # 1) 미리 정의한 별칭 우선
+    lowmap = { _norm_txt(x): x for x in idx }
+    for alias in _SALES_ALIASES:
+        if _norm_txt(alias) in lowmap:
+            return lowmap[_norm_txt(alias)]
+    # 2) fallback: '판매량' 포함 텍스트 탐색
+    for x in idx:
+        if "판매량" in _norm_txt(x):
+            return x
+    return None
+
+def month_shift(y: int, m: int, delta: int) -> Tuple[int, int]:
+    t = y * 12 + (m - 1) + delta
+    return t // 12, t % 12 + 1
+
+def _num(s):
+    if isinstance(s, pd.Series):
+        s = s.astype(str).str.replace(",", "", regex=False).str.strip()
+        return pd.to_numeric(s, errors="coerce")
+    return pd.to_numeric(str(s).replace(",", "").strip(), errors="coerce")
+
+def _pick_col(cols, candidates):
+    # 완전일치 → 소문자일치 → 부분일치
+    for c in candidates:
+        if c in cols:
+            return c
+    low = {c.lower(): c for c in cols}
+    for c in candidates:
+        if c.lower() in low:
+            return low[c.lower()]
+    import re
+    for pat in candidates:
+        rx = re.compile(pat, flags=re.I)
+        for c in cols:
+            if rx.search(str(c)):
+                return c
+    return None
+
+
+# =========================================================
+# =============== 1) 제조 가공비(롱→와이드) ===============
+# =========================================================
+def _to_wide(df_src: pd.DataFrame) -> pd.DataFrame:
+    """
+    f_26 예시 스키마(롱):
+      - 구분1(항목), 구분3(사업장: 포항/충주/충주2), 연도, 월, 실적
+    를 (연도,월,항목,포항,충주,충주2,계) 와이드로 변환
+    """
+    cols = list(df_src.columns)
+    c_y  = _pick_col(cols, ["연도"])
+    c_m  = _pick_col(cols, ["월"])
+    c_it = _pick_col(cols, ["구분1"])
+    c_site = _pick_col(cols, ["구분3"])
+    c_val  = _pick_col(cols, ["실적"])
+
+    if not all([c_y, c_m, c_it, c_site, c_val]):
+        raise ValueError("필수 컬럼(연도,월,구분1,구분3,실적)을 찾을 수 없습니다.")
+
+    df = df_src.copy()
+    df[c_y]   = _num(df[c_y])
+    df[c_m]   = _num(df[c_m])
+    df[c_val] = _num(df[c_val]).fillna(0)
+
+    def _site_norm(s: str) -> str:
+        s = str(s).strip()
+        if "포항" in s :
+            return "포항"
+        if "충주2" in s :
+            return "충주2"
+        if "충주" in s:
+            return "충주"
+        return "기타"
+
+    df["__site__"] = df[c_site].map(_site_norm)
+    df = df[df["__site__"].isin(["포항", "충주", "충주2"])]
+
+    pv = (
+        df.groupby([c_y, c_m, c_it, "__site__"])[c_val].sum().reset_index()
+          .pivot(index=[c_y, c_m, c_it], columns="__site__", values=c_val)
+          .reset_index()
+    )
+    for c in ["포항", "충주", "충주2"]:
+        if c not in pv.columns:
+            pv[c] = 0.0
+
+    pv.rename(columns={c_y: "연도", c_m: "월", c_it: "항목"}, inplace=True)
+    pv["계"] = pv[["포항", "충주", "충주2"]].sum(axis=1)
+    return pv[["연도", "월", "항목", "포항", "충주", "충주2", "계"]]
+
+
+# =============== 제조 가공비: 스냅샷/테이블 ===============
+_ORDER = [
+    "부재료비",
+    "급료와임금",
+    "상여금",
+    "잡급",
+    "퇴직급여충당금",
+    "제조노무비",
+    "전력비",
+    "수도료",
+    "감가상각비",
+    "수선비",
+    "소모품비",
+    "복리후생비",
+    "지급임차료",
+    "지급수수료",
+    "외주용역비",
+    "외주가공비",
+    "기타",
+    "제조경비",
+    "총합",
+    "원재투입중량",
+    "투입중량 원단위(천원)",
+]
+_LABOR = ["급료와임금", "상여금", "잡급", "퇴직급여충당금"]
+_OH    = ["전력비","수도료","감가상각비","수선비","소모품비","복리후생비",
+          "지급임차료","지급수수료","외주용역비","외주가공비","기타"]
+
+def _month_snapshot(df_wide: pd.DataFrame, y: int, m: int) -> pd.DataFrame:
+    """특정 연월의 요구 행 순서 스냅샷 생성"""
+    d = df_wide[(df_wide["연도"] == y) & (df_wide["월"] == m)].copy()
+
+    # 기본 항목 합산
+    base = d.groupby("항목")[["포항","충주","충주2","계"]].sum()
+
+    # 파생 항목 계산
+    def _row_sum(names):
+        if not names:
+            return pd.Series([0,0,0,0], index=["포항","충주","충주2","계"])
+        sub = base.reindex(names).fillna(0)
+        return sub.sum()
+
+    labor = _row_sum(_LABOR)
+    oh    = _row_sum(_OH)
+    material = base.reindex(["부재료비"]).fillna(0).sum()
+    total = labor.add(oh, fill_value=0).add(material, fill_value=0)
+
+    # 원재투입중량
+    weight = d[d["항목"]=="원재투입중량"][["포항","충주","충주2","계"]].sum()
+    if weight.empty:
+        weight = pd.Series([np.nan]*4, index=["포항","충주","충주2","계"])
+
+    # 원단위(천원)
+    unit = total * 1000.0 / weight.replace({0: np.nan})
+
+    # 순서대로 테이블
+    rows = {}
+    for name in _ORDER:
+        if name == "제조노무비":
+            rows[name] = labor
+        elif name == "제조경비":
+            rows[name] = oh
+        elif name == "총합":
+            rows[name] = total
+        elif name == "원재투입중량":
+            rows[name] = weight
+        elif name == "투입중량 원단위(천원)":
+            rows[name] = unit
+        else:
+            rows[name] = base.reindex([name]).fillna(0).sum()
+
+    snap = pd.DataFrame(rows).T[["포항","충주","충주2","계"]]
+    snap.index.name = "구분"
+    return snap
+
+def _make_table(prev_snap: pd.DataFrame, curr_snap: pd.DataFrame) -> pd.DataFrame:
+    idx = prev_snap.index.union(curr_snap.index)
+    prev = prev_snap.reindex(idx).fillna(0.0)
+    curr = curr_snap.reindex(idx).fillna(0.0)
+    diff = curr - prev
+
+    prev.columns = pd.MultiIndex.from_product([["전월"], prev.columns])
+    curr.columns = pd.MultiIndex.from_product([["당월"], curr.columns])
+    diff.columns = pd.MultiIndex.from_product([["전월대비"], diff.columns])
+
+    out = pd.concat([prev, curr, diff], axis=1).reset_index()
+    order_map = {name: i for i, name in enumerate(_ORDER)}
+    out["__ord__"] = out["구분"].map(order_map).fillna(9999)
+    out = out.sort_values(by="__ord__").drop(columns="__ord__").reset_index(drop=True)
+    return out
+
+def build_mfg_cost_table(df_src: pd.DataFrame, sel_y: int, sel_m: int):
+    wide = _to_wide(df_src)
+    prev_y, prev_m = month_shift(sel_y, sel_m, -1)
+    prev_snap = _month_snapshot(wide, prev_y, prev_m)
+    curr_snap = _month_snapshot(wide, sel_y, sel_m)
+    disp = _make_table(prev_snap, curr_snap)
+    meta = dict(prev_y=prev_y, prev_m=prev_m, sel_y=sel_y, sel_m=sel_m)
+    return disp, meta
+
+
+# ===================== SG&A(판매비와 관리비) – STRICT AVG =====================
+
+# 행 순서(표 구분)
+_SGNA_ORDER = [
+    # 인건비
+    "급료와임금","상여금","퇴직급여충당금","인건비",
+    # 관리비
+    "복리후생비","지급임차료","사용권자산 감가상각비","접대비","세금과공과",
+    "대손상각비","지급수수료","A/S비","경상연구비","기타","관리비",
+    # 판매비
+    "판관-운반비","판관-수출개별비","판매비",
+    # 합계/원단위
+    "합계","판매량","인건비 및 관리비 원단위","운반비 원단위",
+]
+
+_SGNA_LABOR = ["급료와임금","상여금","퇴직급여충당금"]
+_SGNA_ADMIN = ["복리후생비","지급임차료","사용권자산 감가상각비","접대비",
+               "세금과공과","대손상각비","지급수수료","A/S비","경상연구비","기타"]
+_SGNA_SELL  = ["판관-운반비","판관-수출개별비"]
+
+def _to_wide_sgna(df_src: pd.DataFrame) -> pd.DataFrame:
+    """숫자 월만 집계(월평균 행 제외) → 최근 3개월/전월대비 계산용"""
+    cols = list(df_src.columns)
+    c_y   = _pick_col(cols, ["연도","년도","year"])
+    c_m   = _pick_col(cols, ["월","month"])
+    c_it  = _pick_col(cols, ["항목","구분1","대분류","계정과목"])
+    c_val = _pick_col(cols, ["실적","금액","비용","원가","Amount","AMT"])
+    if not all([c_y, c_m, c_it, c_val]):
+        raise ValueError("필수 컬럼(연도, 월, 항목, 실적)을 찾을 수 없습니다.")
+
+    df = df_src.copy()
+    df["__월_raw__"] = df[c_m].astype(str).str.strip()
+    df[c_y]   = _num(df[c_y])
+    df[c_m]   = _num(df[c_m])
+    df[c_val] = _num(df[c_val]).fillna(0)
+
+    df = df[df[c_m].notna()]  # 숫자월만
+    g = df.groupby([c_y, c_m, c_it])[c_val].sum().reset_index()
+    g.rename(columns={c_y:"연도", c_m:"월", c_it:"항목", c_val:"계"}, inplace=True)
+    return g[["연도","월","항목","계"]]
+
+def _extract_explicit_avg(df_src: pd.DataFrame) -> pd.DataFrame:
+    """월 컬럼에 '평균'이 포함된 행만 모아 연도·항목별 합계(=월평균 값)를 만든다."""
+    cols = list(df_src.columns)
+    c_y   = _pick_col(cols, ["연도"])
+    c_m   = _pick_col(cols, ["월"])
+    c_it  = _pick_col(cols, ["구분1"])
+    c_val = _pick_col(cols, ["실적"])
+    if not all([c_y, c_m, c_it, c_val]):
+        raise ValueError("필수 컬럼(연도, 월, 항목, 실적)을 찾을 수 없습니다.")
+
+    df = df_src.copy()
+    df["__월_raw__"] = df[c_m].astype(str).str.strip()
+    df[c_y]   = _num(df[c_y])
+    df[c_val] = _num(df[c_val]).fillna(0)
+
+    avg_rows = df[df["__월_raw__"].str.contains("평균", na=False)]
+    if avg_rows.empty:
+        return pd.DataFrame(columns=["연도","항목","계"])
+
+    g = avg_rows.groupby([c_y, c_it])[c_val].sum().reset_index()
+    g.rename(columns={c_y:"연도", c_it:"항목", c_val:"계"}, inplace=True)
+    return g[["연도","항목","계"]]
+
+def _sgna_from_base_series(base: pd.Series, sales_qty_override: Optional[float]=None) -> pd.Series:
+    def _sum(keys): return float(base.reindex(keys).fillna(0).sum())
+
+    labor = _sum(_SGNA_LABOR)
+    admin = _sum(_SGNA_ADMIN)
+    sell  = _sum(_SGNA_SELL)
+
+    # 판매량: alias 인식
+    sales_key = _find_sales_key(base.index)
+    sales_from_base = float(base.get(sales_key, 0.0)) if sales_key else 0.0
+
+    # 오버라이드가 있으면 우선 사용
+    if sales_qty_override is not None and not pd.isna(sales_qty_override) and sales_qty_override != 0:
+        sales_qty = float(sales_qty_override)
+    else:
+        sales_qty = sales_from_base
+
+    total = labor + admin + sell
+    unit_la = ((labor + admin) / sales_qty * 1000.0) if sales_qty else float("nan")
+    unit_f  = (sell / sales_qty * 1000.0) if sales_qty else float("nan")
+
+    out = {}
+    # 원본 항목 값은 그대로
+    for k in set(_SGNA_LABOR + _SGNA_ADMIN + _SGNA_SELL):
+        out[k] = float(base.get(k, 0.0))
+    # 표준 라벨로 매핑해서 '판매량' 행 채우기
+    out["판매량"] = sales_from_base
+
+    # 파생
+    out["인건비"] = labor
+    out["관리비"] = admin
+    out["판매비"] = sell
+    out["합계"]   = total
+    out["인건비 및 관리비 원단위"] = unit_la
+    out["운반비 원단위"]         = unit_f
+    return pd.Series(out).reindex(_SGNA_ORDER)
+
+
+def _sgna_snapshot(df_wide: pd.DataFrame, y: int, m: int) -> pd.Series:
+    """숫자월 데이터로 특정 연월 스냅샷(행=_SGNA_ORDER)"""
+    d = df_wide[(df_wide["연도"]==y) & (df_wide["월"]==m)]
+    base = d.groupby("항목")["계"].sum()
+    return _sgna_from_base_series(base)
+
+def build_sgna_table(df_src: pd.DataFrame, sel_y: int, sel_m: int):
+    """
+    **STRICT**: 월평균 컬럼은 오로지 데이터의 '월=월평균' 행으로만 만든다.
+      - 대상 연도: 파일에 존재하는 연도(예: 2023, 2024). 2025 등 미존재 연도는 만들지 않음.
+    나머지 컬럼: (m-2), (m-1), (m), 전월대비
+    """
+    # 1) 숫자월 데이터(최근 3개월/전월대비)
+    wide = _to_wide_sgna(df_src)
+
+    # 2) 월평균(명시행) → 연도 리스트(오름차순 유지)
+    avg_explicit = _extract_explicit_avg(df_src)  # (연도, 항목, 계)
+    avg_years = sorted(avg_explicit["연도"].dropna().unique().tolist()) if not avg_explicit.empty else []
+
+    # 3) 최근 3개월 + 전월대비
+    m2_y, m2_m = month_shift(sel_y, sel_m, -2)
+    m1_y, m1_m = month_shift(sel_y, sel_m, -1)
+    s_m2 = _sgna_snapshot(wide, m2_y, m2_m)
+    s_m1 = _sgna_snapshot(wide, m1_y, m1_m)
+    s_m0 = _sgna_snapshot(wide, sel_y, sel_m)
+    diff = s_m0 - s_m1
+
+    # 4) 본문 데이터(월/전월대비부터 넣고, 월평균은 앞에 삽입)
+    data = {
+        "구분": _SGNA_ORDER,
+        f"{m2_m}월": s_m2.values,
+        f"{m1_m}월": s_m1.values,
+        f"{sel_m}월": s_m0.values,
+        "전월대비": diff.values,
+    }
+
+    # 5) 연도별 '월평균' 컬럼(있는 연도만) — 각 연도에 대해 파생항목까지 계산
+    for y in reversed(avg_years):
+        base = (avg_explicit[avg_explicit["연도"]==y]
+                .set_index("항목")["계"].astype(float))
+
+        # ---- 판매량 월평균 확보 (alias 인식) ----
+        sales_key = _find_sales_key(base.index)
+        sales_avg = base.get(sales_key, np.nan) if sales_key else np.nan
+
+        if pd.isna(sales_avg) or sales_avg == 0:
+            # 월=월평균에 판매량이 없으면, 숫자월 데이터에서 같은 연도의 판매량 평균 구함
+            wide_y = wide[wide["연도"]==int(y)]
+            # alias 인식: 해당 연도에서 '판매량*' 항목만 필터
+            sales_rows = wide_y[wide_y["항목"].apply(lambda s: _find_sales_key([s]) is not None)]
+            if not sales_rows.empty:
+                sales_avg = sales_rows.groupby("월")["계"].sum().mean()
+            else:
+                sales_avg = np.nan
+
+        s_avg = _sgna_from_base_series(base, sales_qty_override=sales_avg)
+        data = {f"'{int(y)}년 월평균": s_avg.values, **data}
+
+
+    disp = pd.DataFrame(data)
+
+    # 숫자형 보정
+
+    numeric_cols = [c for c in disp.columns if c != "구분"]
+    for c in numeric_cols:
+        disp[c] = pd.to_numeric(disp[c], errors="coerce")
+
+
+    return disp, dict(avg_years=avg_years, months=[m2_m, m1_m, sel_m])
