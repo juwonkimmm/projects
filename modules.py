@@ -4876,7 +4876,13 @@ def _thousand_out(x: float) -> float:
     if not np.isfinite(x):
         return np.nan
     # 백의자리 반올림 후 1000으로 스케일다운
-    return round(float(x), -3) / 1000.0
+    return round(float(x), -3) / 1000
+
+def _milions_out(x: float) -> float:
+    if not np.isfinite(x):
+        return np.nan
+    # 백의자리 반올림 후 1000으로 스케일다운
+    return round(float(x), -5) / 1000000
 
 
 # ===== 메인 =====

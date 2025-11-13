@@ -89,7 +89,7 @@ def display_styled_df(
     styles=None,
     highlight_cols=None,
     already_flat=False,
-    applymap_rules=None,   # 👈 추가: (func, (row_labels, col_labels)) 리스트
+    applymap_rules=None, 
 ):
     """
     - already_flat=True: df가 이미 index 없는 평평한 형태(= reset_index 완료)라고 가정
@@ -119,11 +119,11 @@ def display_styled_df(
 
     styled_df = (
         df_for_style.style
-        # 숫자는 천단위, 문자열은 그대로(괄호포맷 등은 상위에서 문자열로 만들어졌다고 가정)
+
         .format(lambda x: f"{x:,.0f}" if isinstance(x, (int,float,np.integer,np.floating)) and pd.notnull(x) else x)
         .set_properties(**{'text-align':'right','font-family':'Noto Sans KR'})
         .apply(highlight_columns, axis=0)
-        .hide(axis="index")  # 👈 인덱스 완전 숨김
+        .hide(axis="index")
     )
 
     if styles:
@@ -1585,11 +1585,11 @@ with t7:
         def fmt_num(v):
             if pd.isna(v):
                 return ""
-            iv = modules._thousand_out(round(float(v)))
+            iv = modules._milions_out(round(float(v)))
             return f"{iv:,}"
 
         body = disp_vis.copy()
-        data_rows = body.index[1:]  # 첫 행은 헤더
+        data_rows = body.index[1:]  
 
         num_cols = ["1분기", "2분기", "3분기", "4분기", "연간"]
         for c in num_cols:
