@@ -5738,123 +5738,6 @@ def build_bonus_table_28(df_src: pd.DataFrame, sel_y: int, sel_m: int):
 
 ##### 통상임금 #####
 
-# 공용 숫자 파서(보내주신 _num과 동일 규칙)
-def _num(s):
-    if isinstance(s, pd.Series):
-        s = s.astype(str).str.replace(",", "", regex=False).str.strip()
-        return pd.to_numeric(s, errors="coerce")
-    return pd.to_numeric(str(s).replace(",", "").strip(), errors="coerce")
-
-# 선재/AT 표시 순서
-_RW_KIND_ORDER = ["선재", "AT"]
-
-def _rw_kind_norm(x: str) -> str | None:
-    s = str(x)
-    if "선재" in s: return "선재"
-    if "AT" in s.upper(): return "AT"
-    return None  # 선재/AT 아닌 값은 제외
-
-def _month_to_quarter(m: int) -> int:
-    m = int(m)
-    return (m - 1)//3 + 1
-
-def _to_long_regular_wage_29(df_src: pd.DataFrame) -> pd.DataFrame:
-
-    need = ["구분2","구분3","연도","월","실적"]
-    for c in need:
-        if c not in df_src.columns:
-            raise ValueError(f"필수 컬럼 누락: {c}")
-
-    df = df_src.copy()
-
-    # 타입
-    df["연도"] = _num(df["연도"]).astype("Int64")
-    df["월"]   = _num(df["월"]).astype("Int64")
-    df["실적"] = _num(df["실적"])
-
-    # 선재/AT만 남기고 정규화
-    df["구분3_norm"] = df["구분3"].map(_rw_kind_norm)
-    df = df[df["구분3_norm"].isin(_RW_KIND_ORDER)]
-    df = df.rename(columns={"구분3_norm":"구분3"})
-
-    # 분기
-    df["분기"] = df["월"].map(_month_to_quarter)
-    return df[["연도","월","분기","구분2","구분3","실적"]]
-
-def build_regular_wage_table_29_by_item(
-    df_src: pd.DataFrame,
-    year: int,
-    item_order: list[str] | None = None,
-    kind_order: list[str] | None = None,
-) -> tuple[pd.DataFrame, dict]:
-    """
-    반환: 표시용 DF, 메타
-    - 행: (구분3,구분2) 상세행 → '선재 소계' → 'AT 소계' → '총계'
-    - 열: '구분3','구분2','1분기','2분기','3분기','4분기','연간합계'
-    - item_order: 구분2 원하는 순서(미지정 항목은 뒤에 원래 등장 순서대로)
-    - kind_order: 기본 ['선재','AT']
-    """
-    NEED = ["구분3","구분2","1분기","2분기","3분기","4분기","연간합계"]
-    def _empty():
-        return pd.DataFrame(columns=NEED), {"year": int(year), "unknown_kinds": []}
-
-    # 정규화된 long 테이블
-    try:
-        d = _to_long_regular_wage_29(df_src)
-    except Exception:
-        return _empty()
-
-    d = d[(d["연도"] == int(year)) & d["실적"].notna()]
-    if d.empty: return _empty()
-
-    # 집계: (구분3,구분2,분기)
-    grp = (d.groupby(["구분3","구분2","분기"], dropna=False)["실적"]
-             .sum().reset_index())
-    if grp.empty: return _empty()
-
-    # pivot
-    wide = grp.pivot(index=["구분3","구분2"], columns="분기", values="실적")
-    wide.index.set_names(["구분3","구분2"], inplace=True)
-    for q in [1,2,3,4]:
-        if q not in wide.columns: wide[q] = np.nan
-    wide = wide[[1,2,3,4]]
-    wide["연간합계"] = wide.sum(axis=1, min_count=1)
-
-    if kind_order is None:
-        kind_order = _RW_KIND_ORDER
-
-    if item_order:
-        seen_items = list(pd.Index(wide.index.get_level_values(1)).unique())
-        rest = [x for x in seen_items if x not in item_order]
-        full_items = item_order + rest
-    else:
-        full_items = list(pd.Index(wide.index.get_level_values(1)).unique())
-
-    # 정렬용 인덱스 프레임
-    idx = wide.index.to_frame(index=False)
-    idx["__kord__"] = pd.Categorical(idx["구분3"], categories=kind_order, ordered=True)
-    idx["__iord__"] = pd.Categorical(idx["구분2"], categories=full_items, ordered=True)
-    wide = wide.set_index(pd.MultiIndex.from_frame(idx[["구분3","구분2"]]))
-    wide = wide.sort_values(by=["__kord__","__iord__"], key=lambda s: s)
-
-    # ===== 소계/총계 =====
-    sub = wide.groupby(level=0).sum(min_count=1).reindex(kind_order)
-    sub.index = [f"{k} 소계" for k in sub.index]
-    total = pd.DataFrame([sub.sum(axis=0, min_count=1)], index=["총계"])  
-
-    out = pd.concat([wide, sub, total], axis=0)
-
-    # 라벨/열 정리
-    out = out.rename(columns={1:"1분기",2:"2분기",3:"3분기",4:"4분기"}).reset_index()
-    # 소계/총계의 구분2 공란 처리
-    mask = out["구분3"].astype(str).str.contains("소계|총계", na=False)
-    out.loc[mask, "구분2"] = ""
-    out = out.reindex(columns=NEED)
-
-    return out, {"year": int(year)}
-
-##### 통상임금 #####
-
 def _month_to_quarter(m: int) -> str:
     if 1 <= m <= 3:
         return "1분기"
@@ -5939,3 +5822,178 @@ def build_wage_table_29(df_src: pd.DataFrame, year: int) -> pd.DataFrame:
 
     return disp_raw
 
+
+##### 인원현황 #####
+
+
+def build_headcount_table_60(df_src: pd.DataFrame, year: int, month: int):
+
+
+    df = df_src.copy()
+
+    # 숫자형 변환
+    df["연도"] = df["연도"].astype(int)
+    df["월"] = df["월"].astype(int)
+    df["실적"] = (
+        df["실적"]
+        .astype(str)
+        .str.replace(",", "", regex=False)
+        .replace("", "0")
+        .astype(float)
+    )
+
+    prev_year = year - 1
+    m = month
+    m1 = month - 1
+    m2 = month - 2
+
+    # ---------- 집계용 헬퍼 ----------
+    def avg_for_year(sub: pd.DataFrame, y: int, upto: int | None = None) -> float:
+        s = sub[(sub["연도"] == y) & (sub["구분4"] == "실적")]
+        if upto is not None:
+            s = s[s["월"] <= upto]
+        if s.empty:
+            return 0.0
+        bym = s.groupby("월")["실적"].sum()
+        return float(bym.mean())
+
+    def val_for(sub: pd.DataFrame, y: int, mo: int, kind: str) -> float:
+        if mo < 1:
+            return 0.0
+        s = sub[(sub["연도"] == y) & (sub["월"] == mo) & (sub["구분4"] == kind)]
+        if s.empty:
+            return 0.0
+        return float(s["실적"].sum())
+
+    def compute_for(sub: pd.DataFrame) -> dict:
+        prev_avg = avg_for_year(sub, prev_year)
+        plan = val_for(sub, year, m, "계획")
+        act2 = val_for(sub, year, m2, "실적")
+        act1 = val_for(sub, year, m1, "실적")
+        act = val_for(sub, year, m, "실적")
+        this_avg = avg_for_year(sub, year, upto=m)
+        mom = act - act1
+        plan_diff = act - plan
+        return {
+            "prev_avg": prev_avg,
+            "plan_m": plan,
+            "act_m2": act2,
+            "act_m1": act1,
+            "act_m": act,
+            "this_avg": this_avg,
+            "mom_diff": mom,
+            "plan_diff": plan_diff,
+        }
+
+    # ---------- 행 만들기 ----------
+    rows: list[dict] = []
+
+    def add_row(label1: str, label2: str, sub: pd.DataFrame):
+        metrics = compute_for(sub)
+        row = {"구분1": label1, "구분2": label2}
+        row.update(metrics)
+        rows.append(row)
+
+    plants = ["서울", "포항", "충주", "충주2", "원주"]
+
+    for plant in plants:
+        plant_df = df[df["구분1"] == plant]
+
+        if plant_df.empty:
+            add_row(plant, "", plant_df)
+            continue
+
+        if plant == "서울":
+            # 서울: 사무직만, 한 행으로 표시
+            sub = plant_df[
+                (plant_df["구분2"] == "자사")
+                & (plant_df["구분3"] == "사무기술직")
+            ]
+            if sub.empty:
+                sub = plant_df
+            add_row("서울", "사무직", sub)
+        else:
+            # 포항/충주/충주2/원주
+            off = plant_df[
+                (plant_df["구분2"] == "자사")
+                & (plant_df["구분3"] == "사무기술직")
+            ]
+            func = plant_df[
+                (plant_df["구분2"] == "자사")
+                & (plant_df["구분3"] == "기능직")
+            ]
+            own = plant_df[plant_df["구분2"] == "자사"]
+            out = plant_df[plant_df["구분2"] == "외주"]
+
+            add_row(plant, "사무직", off)
+            add_row(plant, "기능직", func)
+            add_row(plant, "자사", own)
+            add_row(plant, "외주", out)
+            add_row(plant, "합계", plant_df)
+
+    # 자사계
+    own_all = df[df["구분2"] == "자사"]
+    off_all = own_all[own_all["구분3"] == "사무기술직"]
+    func_all = own_all[own_all["구분3"] == "기능직"]
+
+    add_row("자사계", "사무직", off_all)
+    add_row("자사계", "기능직", func_all)
+    add_row("자사계", "합계", own_all)
+
+    # 외주계
+    out_all = df[df["구분2"] == "외주"]
+    add_row("외주계", "합계", out_all)
+
+    # 전체
+    add_row("전체", "합계", df)
+
+    disp = pd.DataFrame(rows)
+
+    col_order = [
+        "구분1",
+        "구분2",
+        "prev_avg",
+        "plan_m",
+        "act_m2",
+        "act_m1",
+        "act_m",
+        "this_avg",
+        "mom_diff",
+        "plan_diff",
+    ]
+    disp = disp[col_order]
+
+    meta = {
+        "prev_year": prev_year,
+        "this_year": year,
+        "m2": m2,
+        "m1": m1,
+        "m": m,
+        "cols": col_order,
+        "hdr1": [
+            "",                               # 구분1
+            "",                               # 구분2
+            f"'{str(prev_year)[-2:]}년 연평균",
+            f"{year}년 계획",
+            f"{year}년 실적",
+            f"{year}년 실적",
+            f"{year}년 실적",
+            f"'{str(year)[-2:]}년 연평균",
+            "전월대비",
+            "계획대비",
+        ],
+        "hdr2": [
+            "구분1",
+            "구분2",
+            "",                               # prev_avg
+            f"{m}월",                         # plan_m
+            f"{m2}월" if m2 >= 1 else "",
+            f"{m1}월" if m1 >= 1 else "",
+            f"{m}월",
+            "",                               # this_avg
+            "",                               # mom_diff
+            "",                               # plan_diff
+        ],
+    }
+
+    return disp, meta
