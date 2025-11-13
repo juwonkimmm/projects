@@ -4876,7 +4876,7 @@ def _thousand_out(x: float) -> float:
     if not np.isfinite(x):
         return np.nan
     # 백의자리 반올림 후 1000으로 스케일다운
-    return round(float(x), -2) / 1000.0
+    return round(float(x), -3) / 1000.0
 
 
 # ===== 메인 =====
@@ -5440,9 +5440,8 @@ def build_mfg_cost_table(df_src: pd.DataFrame, sel_y: int, sel_m: int):
     return disp, meta
 
 
-# ===================== SG&A(판매비와 관리비) – STRICT AVG =====================
 
-# 행 순서(표 구분)
+# 행 순서
 _SGNA_ORDER = [
     # 인건비
     "급료와임금","상여금","퇴직급여충당금","인건비",
@@ -5611,3 +5610,326 @@ def build_sgna_table(df_src: pd.DataFrame, sel_y: int, sel_m: int):
 
 
     return disp, dict(avg_years=avg_years, months=[m2_m, m1_m, sel_m])
+
+
+##### 성과급 및 격려금 #####
+
+
+
+def _num(s):
+    if isinstance(s, pd.Series):
+        s = s.astype(str).str.replace(",", "", regex=False).str.strip()
+        return pd.to_numeric(s, errors="coerce")
+    return pd.to_numeric(str(s).replace(",", "").strip(), errors="coerce")
+
+# ========== 성과급 및 격려금 (구분1~4 전용) ==========
+_BONUS_ORDER = ["제조", "판관", "임원", "직원", "총"]
+
+def _b_group_norm(s: str) -> str:
+    s = str(s).strip()
+    if "제조" in s: return "제조"
+    if "임원" in s: return "임원"
+    if "직원" in s: return "직원"
+    return s
+
+def _to_long_bonus_28(df_src: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+
+    need = ["구분1","구분2","구분3","구분4","연도","월","실적"]
+    for c in need:
+        if c not in df_src.columns:
+            raise ValueError(f"필수 컬럼 누락: {c}")
+
+    df = df_src.copy()
+
+    # 이 테이블만 필터(혹시 다른 항목 섞여있을 대비)
+    df = df[df["구분1"].astype(str).str.contains("성과급", na=False)]
+
+    # 숫자화
+    df["연도"] = _num(df["연도"])
+    df["월"]   = _num(df["월"])    # 100%|연간/월은 NaN이어도 무방
+    df["실적"] = _num(df["실적"]).fillna(0.0)
+
+    # 부문 정규화
+    df["부문"] = df["구분2"].map(_b_group_norm)
+
+    # --- 당월(월별) 계획/실적 ---
+    mon = df[df["구분4"]=="당월"].copy()
+    plan = (mon[mon["구분3"]=="계획"]
+            .groupby(["연도","월","부문"])["실적"].sum().rename("계획"))
+    act  = (mon[mon["구분3"]=="실적"]
+            .groupby(["연도","월","부문"])["실적"].sum().rename("실적"))
+    mon_tbl = pd.concat([plan, act], axis=1).fillna(0.0).reset_index()
+
+    # --- 100% 금액(연간/월) ---
+    cent = df[df["구분3"]=="100%"].copy()
+    cent_ann = (cent[cent["구분4"]=="연간"]
+                .groupby(["연도","부문"])["실적"].sum().rename("연간")).reset_index()
+    cent_mon = (cent[cent["구분4"]=="월"]
+                .groupby(["연도","부문"])["실적"].sum().rename("월")).reset_index()
+
+    return mon_tbl, cent_ann, cent_mon
+
+
+def build_bonus_table_28(df_src: pd.DataFrame, sel_y: int, sel_m: int):
+    mon_tbl, cent_ann, cent_mon = _to_long_bonus_28(df_src)
+
+    # ── 당월 ──
+    mon_y = mon_tbl[(mon_tbl["연도"]==sel_y) & (mon_tbl["월"]==sel_m)]
+    if mon_y.empty:
+        mon_df = pd.DataFrame(index=["제조","임원","직원"], columns=["계획","실적"]).fillna(0.0)
+    else:
+        mon_df = (mon_y.groupby("부문")[["계획","실적"]].sum()).reindex(["제조","임원","직원"]).fillna(0.0)
+    mon_df.loc["판관", ["계획","실적"]] = mon_df.reindex(["임원","직원"]).sum()
+    mon_df.loc["총",    ["계획","실적"]] = mon_df.reindex(["제조","판관"]).sum()
+    mon_df["차이"] = mon_df["실적"] - mon_df["계획"]
+
+    # ── 누적(1~sel_m) ──
+    ytd = mon_tbl[(mon_tbl["연도"]==sel_y) & (mon_tbl["월"].between(1, sel_m, inclusive="both"))]
+    if ytd.empty:
+        ytd_df = pd.DataFrame(index=["제조","임원","직원"], columns=["계획","실적"]).fillna(0.0)
+    else:
+        ytd_df = (ytd.groupby("부문")[["계획","실적"]].sum()).reindex(["제조","임원","직원"]).fillna(0.0)
+    ytd_df.loc["판관", ["계획","실적"]] = ytd_df.reindex(["임원","직원"]).sum()
+    ytd_df.loc["총",    ["계획","실적"]] = ytd_df.reindex(["제조","판관"]).sum()
+    ytd_df["차이"] = ytd_df["실적"] - ytd_df["계획"]
+
+    # ── 100% 금액(원본 그대로) ──
+    ann = cent_ann[cent_ann["연도"]==sel_y].set_index("부문")["연간"] if not cent_ann.empty else pd.Series(dtype=float)
+    mon100 = cent_mon[cent_mon["연도"]==sel_y].set_index("부문")["월"] if not cent_mon.empty else pd.Series(dtype=float)
+
+    # 보강 및 파생(판관/총)
+    def _fill_100(s: pd.Series) -> pd.Series:
+        s = s.reindex(["제조","판관","임원","직원","총"]).fillna(0.0)
+        if s.get("판관", 0)==0:
+            s.loc["판관"] = s.reindex(["임원","직원"]).sum()
+        if s.get("총", 0)==0:
+            s.loc["총"] = s.reindex(["제조","판관"]).sum()
+        return s
+
+    ann   = _fill_100(ann)
+    mon100= _fill_100(mon100)
+
+    # ── 출력 DF ──
+    order = ["제조","판관","임원","직원","총"]
+    out = pd.DataFrame({"구분": order})
+
+    for k in ["계획","실적","차이"]:
+        out[f"당월|{k}"] = out["구분"].map(mon_df[k].to_dict()).fillna(0.0)
+
+    ytd_lbl = f"{sel_m}월 누적"
+    for k in ["계획","실적","차이"]:
+        out[f"{ytd_lbl}|{k}"] = out["구분"].map(ytd_df[k].to_dict()).fillna(0.0)
+
+    out["100% 금액|연간"] = out["구분"].map(ann.to_dict()).fillna(0.0)
+    out["100% 금액|월"]   = out["구분"].map(mon100.to_dict()).fillna(0.0)
+
+    # 숫자형 보정(구분 제외)
+    for c in [c for c in out.columns if c != "구분"]:
+        out[c] = pd.to_numeric(out[c], errors="coerce").fillna(0.0)
+
+    return out, dict(ytd_lbl=ytd_lbl)
+
+
+##### 통상임금 #####
+
+# 공용 숫자 파서(보내주신 _num과 동일 규칙)
+def _num(s):
+    if isinstance(s, pd.Series):
+        s = s.astype(str).str.replace(",", "", regex=False).str.strip()
+        return pd.to_numeric(s, errors="coerce")
+    return pd.to_numeric(str(s).replace(",", "").strip(), errors="coerce")
+
+# 선재/AT 표시 순서
+_RW_KIND_ORDER = ["선재", "AT"]
+
+def _rw_kind_norm(x: str) -> str | None:
+    s = str(x)
+    if "선재" in s: return "선재"
+    if "AT" in s.upper(): return "AT"
+    return None  # 선재/AT 아닌 값은 제외
+
+def _month_to_quarter(m: int) -> int:
+    m = int(m)
+    return (m - 1)//3 + 1
+
+def _to_long_regular_wage_29(df_src: pd.DataFrame) -> pd.DataFrame:
+
+    need = ["구분2","구분3","연도","월","실적"]
+    for c in need:
+        if c not in df_src.columns:
+            raise ValueError(f"필수 컬럼 누락: {c}")
+
+    df = df_src.copy()
+
+    # 타입
+    df["연도"] = _num(df["연도"]).astype("Int64")
+    df["월"]   = _num(df["월"]).astype("Int64")
+    df["실적"] = _num(df["실적"])
+
+    # 선재/AT만 남기고 정규화
+    df["구분3_norm"] = df["구분3"].map(_rw_kind_norm)
+    df = df[df["구분3_norm"].isin(_RW_KIND_ORDER)]
+    df = df.rename(columns={"구분3_norm":"구분3"})
+
+    # 분기
+    df["분기"] = df["월"].map(_month_to_quarter)
+    return df[["연도","월","분기","구분2","구분3","실적"]]
+
+def build_regular_wage_table_29_by_item(
+    df_src: pd.DataFrame,
+    year: int,
+    item_order: list[str] | None = None,
+    kind_order: list[str] | None = None,
+) -> tuple[pd.DataFrame, dict]:
+    """
+    반환: 표시용 DF, 메타
+    - 행: (구분3,구분2) 상세행 → '선재 소계' → 'AT 소계' → '총계'
+    - 열: '구분3','구분2','1분기','2분기','3분기','4분기','연간합계'
+    - item_order: 구분2 원하는 순서(미지정 항목은 뒤에 원래 등장 순서대로)
+    - kind_order: 기본 ['선재','AT']
+    """
+    NEED = ["구분3","구분2","1분기","2분기","3분기","4분기","연간합계"]
+    def _empty():
+        return pd.DataFrame(columns=NEED), {"year": int(year), "unknown_kinds": []}
+
+    # 정규화된 long 테이블
+    try:
+        d = _to_long_regular_wage_29(df_src)
+    except Exception:
+        return _empty()
+
+    d = d[(d["연도"] == int(year)) & d["실적"].notna()]
+    if d.empty: return _empty()
+
+    # 집계: (구분3,구분2,분기)
+    grp = (d.groupby(["구분3","구분2","분기"], dropna=False)["실적"]
+             .sum().reset_index())
+    if grp.empty: return _empty()
+
+    # pivot
+    wide = grp.pivot(index=["구분3","구분2"], columns="분기", values="실적")
+    wide.index.set_names(["구분3","구분2"], inplace=True)
+    for q in [1,2,3,4]:
+        if q not in wide.columns: wide[q] = np.nan
+    wide = wide[[1,2,3,4]]
+    wide["연간합계"] = wide.sum(axis=1, min_count=1)
+
+    if kind_order is None:
+        kind_order = _RW_KIND_ORDER
+
+    if item_order:
+        seen_items = list(pd.Index(wide.index.get_level_values(1)).unique())
+        rest = [x for x in seen_items if x not in item_order]
+        full_items = item_order + rest
+    else:
+        full_items = list(pd.Index(wide.index.get_level_values(1)).unique())
+
+    # 정렬용 인덱스 프레임
+    idx = wide.index.to_frame(index=False)
+    idx["__kord__"] = pd.Categorical(idx["구분3"], categories=kind_order, ordered=True)
+    idx["__iord__"] = pd.Categorical(idx["구분2"], categories=full_items, ordered=True)
+    wide = wide.set_index(pd.MultiIndex.from_frame(idx[["구분3","구분2"]]))
+    wide = wide.sort_values(by=["__kord__","__iord__"], key=lambda s: s)
+
+    # ===== 소계/총계 =====
+    sub = wide.groupby(level=0).sum(min_count=1).reindex(kind_order)
+    sub.index = [f"{k} 소계" for k in sub.index]
+    total = pd.DataFrame([sub.sum(axis=0, min_count=1)], index=["총계"])  
+
+    out = pd.concat([wide, sub, total], axis=0)
+
+    # 라벨/열 정리
+    out = out.rename(columns={1:"1분기",2:"2분기",3:"3분기",4:"4분기"}).reset_index()
+    # 소계/총계의 구분2 공란 처리
+    mask = out["구분3"].astype(str).str.contains("소계|총계", na=False)
+    out.loc[mask, "구분2"] = ""
+    out = out.reindex(columns=NEED)
+
+    return out, {"year": int(year)}
+
+##### 통상임금 #####
+
+def _month_to_quarter(m: int) -> str:
+    if 1 <= m <= 3:
+        return "1분기"
+    elif 4 <= m <= 6:
+        return "2분기"
+    elif 7 <= m <= 9:
+        return "3분기"
+    else:
+        return "4분기"
+
+
+def build_wage_table_29(df_src: pd.DataFrame, year: int) -> pd.DataFrame:
+    """
+    f_29(통상임금) 원본 df → 분기/연간 집계.
+    컬럼: [구분, 항목, 1분기, 2분기, 3분기, 4분기, 연간]
+    """
+
+    df = df_src.copy()
+
+    df = df[(df["구분1"] == "통상임금") &
+            (df["연도"].astype(int) == int(year))]
+
+    if df.empty:
+        return pd.DataFrame(
+            columns=["구분", "항목", "1분기", "2분기", "3분기", "4분기", "연간"]
+        )
+
+    df["월"] = df["월"].astype(int)
+    df["실적"] = (
+        df["실적"].astype(str)
+        .str.replace(",", "", regex=False)
+        .replace("", "0")
+        .astype(float)
+    )
+
+    df["분기"] = df["월"].map(_month_to_quarter)
+
+    def make_block(df_block: pd.DataFrame, label: str) -> pd.DataFrame:
+        g = df_block.groupby(["구분2", "분기"], as_index=False)["실적"].sum()
+
+        piv = (
+            g.pivot_table(index="구분2", columns="분기", values="실적", aggfunc="sum")
+            .fillna(0.0)
+        )
+
+        # 4개 분기 다 만들어두기
+        for q in ["1분기", "2분기", "3분기", "4분기"]:
+            if q not in piv.columns:
+                piv[q] = 0.0
+
+        piv = piv[["1분기", "2분기", "3분기", "4분기"]]
+
+        piv["연간"] = piv.sum(axis=1)
+
+        row_order = [
+            "1. 급여소급분_소급분",
+            "1. 급여소급분_증가분",
+            "2.연월차",
+            "3.퇴직급여",
+        ]
+        ordered = [r for r in row_order if r in piv.index]
+        others = [r for r in piv.index if r not in ordered]
+        piv = piv.loc[ordered + others]
+
+        total_row = piv.sum(axis=0).to_frame().T
+        total_row.index = ["총계"]
+        piv = pd.concat([piv, total_row])
+
+        piv.insert(0, "항목", piv.index)
+        piv.insert(0, "구분", label)
+
+        return piv.reset_index(drop=True)
+
+    df_seon = df[df["구분3"] == "선재"]
+    df_at = df[df["구분3"] == "AT"]
+
+    block_total = make_block(df, "총계")
+    block_seon = make_block(df_seon, "선재") if not df_seon.empty else pd.DataFrame()
+    block_at = make_block(df_at, "AT") if not df_at.empty else pd.DataFrame()
+
+    disp_raw = pd.concat([block_total, block_seon, block_at], ignore_index=True)
+
+    return disp_raw
+
