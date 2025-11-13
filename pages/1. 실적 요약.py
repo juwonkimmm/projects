@@ -201,7 +201,7 @@ def load_defect(url: str) -> pd.DataFrame:
 year = int(st.session_state['year'])
 month = int(st.session_state['month'])
 
-st.markdown(f"## {year}년 {month}월 실적 분석")
+st.markdown(f"## {year}년 {month}월 실적 요약")
 t1, t2, t3 = st.tabs(['주요경영지표', '주요경영지표(본사)', '연간사업계획'])
 st.divider()
 
