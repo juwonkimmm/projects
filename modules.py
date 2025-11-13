@@ -5826,7 +5826,7 @@ def build_wage_table_29(df_src: pd.DataFrame, year: int) -> pd.DataFrame:
 ##### 인원현황 #####
 
 
-def build_headcount_table_60(df_src: pd.DataFrame, year: int, month: int):
+def build_table_60(df_src: pd.DataFrame, year: int, month: int):
 
 
     df = df_src.copy()

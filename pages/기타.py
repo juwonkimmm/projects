@@ -253,7 +253,7 @@ with t1:
         sel_y = int(st.session_state["year"])
         sel_m = int(st.session_state["month"])
 
-        disp_raw, meta = modules.build_headcount_table_60(df_src, sel_y, sel_m)
+        disp_raw, meta = modules.build_table_60(df_src, sel_y, sel_m)
 
         base_cols = meta["cols"]       
         hdr1 = meta["hdr1"]
