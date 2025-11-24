@@ -197,7 +197,6 @@ thead {
 
 # 화면 구성
 st.markdown('<div class="centered">', unsafe_allow_html=True)
-st.image("D:\\seah\\pages\\logo.gif", width=200)
 st.markdown(f"## {this_year}년 {current_month}월 비용 분석")
 t1, t2, t3, t4, t5, t6, t7 = st.tabs(['사용량 원단위 추이_포항', '사용량 원단위 추이_충주1','사용량 원단위 추이_충주2','단가 추이', '월 평균 클레임 지급액','당월 클레임 내역','영업외 비용 내역'])
 st.divider()
