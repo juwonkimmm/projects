@@ -72,7 +72,7 @@ def with_inline_header_row(df: pd.DataFrame,
     df2 = pd.concat([hdr, df], axis=0)
     return df2
 
-def display_styled_df_keep_index(df, styles=None, highlight_cols=None, fmt_int=True):
+def display_styled_df_keep_index(df, styles=None, highlight_cols=None, fmt_int=True,align="left"):
     """
     인덱스를 reset_index()하지 않고 그대로 렌더링합니다.
     - Pandas Styler가 인덱스 셀에 th.row_heading.level* 클래스를 붙여줍니다.
@@ -113,9 +113,16 @@ def display_styled_df_keep_index(df, styles=None, highlight_cols=None, fmt_int=T
 
     # 렌더링
     html = styled.to_html()  # 인덱스는 그대로(th.row_heading.level*)
-    st.markdown(f"<div style='display:flex;justify-content:center'>{html}</div>", unsafe_allow_html=True)
+    if align == "center":
+        wrapper = f"<div style='display:flex; justify-content:center;'>{html}</div>"
+    elif align == "right":
+        wrapper = f"<div style='display:flex; justify-content:flex-end;'>{html}</div>"
+    else:  # left
+        wrapper = f"<div style='display:flex; justify-content:flex-start;'>{html}</div>"
 
-def display_styled_df(df, styles=None, highlight_cols=None):
+    st.markdown(wrapper, unsafe_allow_html=True)
+
+def display_styled_df(df, styles=None, highlight_cols=None,align="left"):
     """
     - 행 멀티인덱스는 reset_index()로 컬럼 승격 → 왼쪽 숫자 인덱스 제거
     - reset_index()로 생길 수 있는 '중복 컬럼명' 자동 고유화
@@ -155,8 +162,62 @@ def display_styled_df(df, styles=None, highlight_cols=None):
 
     # 5) 렌더
     table_html = styled_df.to_html()
-    centered_html = f"<div style='display: flex; justify-content: center;'>{table_html}</div>"
-    st.markdown(centered_html, unsafe_allow_html=True)
+    if align == "center":
+        wrapper = f"<div style='display:flex; justify-content:center;'>{table_html}</div>"
+    elif align == "right":
+        wrapper = f"<div style='display:flex; justify-content:flex-end;'>{table_html}</div>"
+    else:  # left
+        wrapper = f"<div style='display:flex; justify-content:flex-start;'>{table_html}</div>"
+
+    st.markdown(wrapper, unsafe_allow_html=True)
+
+def create_indented_html(s):
+    """문자열의 앞 공백을 기반으로 들여쓰기된 HTML <p> 태그를 생성합니다."""
+    content = s.lstrip(' ')
+    num_spaces = len(s) - len(content)
+    indent_level = num_spaces // 2
+    return f'<p class="indent-{indent_level}">{content}</p>'
+
+
+def display_memo(memo_file_key, year, month,):
+    """메모 파일 키와 년/월을 받아 해당 메모를 화면에 표시합니다."""
+    file_name = st.secrets['memos'][memo_file_key]
+    try:
+        df_memo = pd.read_csv(file_name)
+
+        # 년도/월 기준으로 필터
+        df_filtered = df_memo[(df_memo['년도'] == year) & (df_memo['월'] == month)]
+
+        if df_filtered.empty:
+            st.warning(f"{year}년 {month}월 메모를 찾을 수 없습니다.")
+            return
+
+        # 여러 행이 있을 경우, 일단 첫 번째 행 사용 (원하면 join 가능)
+        memo_text = df_filtered.iloc[0]['메모']
+
+        # 기존 로직 유지
+        str_list = memo_text.split('\n')
+        html_items = [create_indented_html(s) for s in str_list]
+        body_content = "".join(html_items)
+
+        html_code = f"""
+        <style>
+            .memo-body {{
+                font-family: 'Noto Sans KR', sans-serif;
+                word-spacing: 5px;
+            }}
+            .memo-body .indent-0 {{ padding-left: 0px; padding-top: 10px; text-indent: -30px; font-size: 17px; font-weight: bold; }}
+            .memo-body .indent-1 {{ padding-left: 20px; padding-top: 5px; text-indent: -10px; font-size: 17px; }}
+            .memo-body .indent-2 {{ padding-left: 40px; font-size: 17px; }}
+            .memo-body .indent-3 {{ padding-left: 60px; font-size: 12px; }}
+            .memo-body p {{ margin: 0.2rem 0; }}
+        </style>
+        <div class="memo-body">{body_content}</div>
+        """
+        st.markdown(html_code, unsafe_allow_html=True)
+
+    except (FileNotFoundError, KeyError):
+        st.warning(f"메모 파일을 찾을 수 없습니다: {memo_file_key}")
 
 # =========================
 # 날짜 선택 사이드바
@@ -250,7 +311,7 @@ def load_defect(url: str) -> pd.DataFrame:
 year = int(st.session_state['year'])
 month = int(st.session_state['month'])
 
-
+st.image("D:\seah\pages\logo.gif", width=200)
 st.markdown(f"## {year}년 {month}월 생산 분석")
 t1, t2, t3 = st.tabs(['전체 생산실적', '부적합 발생내역_포항공장', '부적합 발생내역_충주 1,2공장'])
 st.divider()
@@ -262,7 +323,7 @@ with t1:
     st.markdown("<h4>1) 전체 생산실적</h4>", unsafe_allow_html=True)
 
     # 표 우측 상단 단위
-    unit = "<div style='text-align:right; font-size:14px; color:#666;'>[단위: 톤]</div>"
+    unit = "<div style='text-align:left; font-size:14px; color:#666;'>[단위: 톤]</div>"
     st.markdown(unit, unsafe_allow_html=True)
 
     try:
@@ -537,6 +598,8 @@ with t1:
         foot = "<div style='text-align:left; font-size:13px; color:#666;'>※ 집계기준 : 원재 투입량 + 비가공 + 제품 재가공</div>"
         st.markdown(foot, unsafe_allow_html=True)
 
+        display_memo('f_40', year, month)
+
     except Exception as e:
         st.error(f"사업부/공장 요약 표를 표시하는 중 오류가 발생했습니다: {e}")
 
@@ -545,6 +608,7 @@ with t1:
 # =========================
 with t2:
     st.markdown("<h4>2) 부적합 발생내역 (포항)</h4>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 톤, %]</div>", unsafe_allow_html=True)
     try:
         # 원본 로드
         df_src = load_defect(st.secrets['sheets']['f_41_42'])
@@ -754,35 +818,18 @@ with t2:
             highlight_cols=hl_cols,
             fmt_int=True
         )
+        display_memo('f_41', year, month)
 
     except Exception as e:
         st.error(f"충주 1,2공장 부적합 표 생성 중 오류가 발생했습니다: {e}")
-
-
-        
-               
-        
-        # 굵은 가로 경계선(데이터 구간, +1 보정)
-        # styles_def.extend([
-        #     {'selector': f'tbody tr:nth-child({r + 2})',
-        #      'props': [('border-bottom', '3px solid #666 !important')]}
-        #     for r in thick_rows_data_zero_based
-        # ])
-
-        # 강조 컬럼(연회색)
-    #     hl_cols = [f"{str(year - 1)[-2:]}년 월평균", f"{str(year)[-2:]}년 목표", '합계', '월평균']
-
-    #     # reset_index() 안 쓰는 렌더러로 출력
-    #     display_styled_df_keep_index(df_inline, styles=styles_def, highlight_cols=hl_cols, fmt_int=True)
-
-    # except Exception as e:
-    #     st.error(f"포항 부적합 표 생성 중 오류가 발생했습니다: {e}")
-
+                       
+    
 # =========================
 # 부적합 발생내역 - 충주 1,2공장
 # =========================
 with t3:
     st.markdown("<h4>3) 부적합 발생내역 (충주 1,2공장)</h4>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 톤, %]</div>", unsafe_allow_html=True)
     try:
         df_src = load_defect(st.secrets['sheets']['f_41_42'])
 
@@ -1003,6 +1050,8 @@ with t3:
             highlight_cols=hl_cols,
             fmt_int=True
         )
+
+        display_memo('f_42', year, month)
 
     except Exception as e:
         st.error(f"충주 1,2공장 부적합 표 생성 중 오류가 발생했습니다: {e}")

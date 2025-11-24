@@ -97,8 +97,6 @@ def display_styled_df(
         * row_indexer, col_indexer는 '라벨 기반' 인덱서(= df.index/df.columns에서 뽑은 값)여야 함
         * 예) [(neg_red_func, (df.index[2:], df.columns[4:]))]
     """
-    import numpy as np
-    import pandas as pd
 
     if already_flat:
         df_for_style = df.copy()
@@ -134,10 +132,56 @@ def display_styled_df(
             rows, cols = subset  # 라벨 기반 인덱서여야 함
             styled_df = styled_df.applymap(func, subset=pd.IndexSlice[rows, cols])
 
-    st.markdown(
-        f"<div style='display:flex;justify-content:center'>{styled_df.to_html()}</div>",
-        unsafe_allow_html=True
-    )
+    st.markdown(styled_df.to_html(), unsafe_allow_html=True)
+
+
+def create_indented_html(s):
+    """문자열의 앞 공백을 기반으로 들여쓰기된 HTML <p> 태그를 생성합니다."""
+    content = s.lstrip(' ')
+    num_spaces = len(s) - len(content)
+    indent_level = num_spaces // 2
+    return f'<p class="indent-{indent_level}">{content}</p>'
+
+
+def display_memo(memo_file_key, year, month,):
+    """메모 파일 키와 년/월을 받아 해당 메모를 화면에 표시합니다."""
+    file_name = st.secrets['memos'][memo_file_key]
+    try:
+        df_memo = pd.read_csv(file_name)
+
+        # 년도/월 기준으로 필터
+        df_filtered = df_memo[(df_memo['년도'] == year) & (df_memo['월'] == month)]
+
+        if df_filtered.empty:
+            st.warning(f"{year}년 {month}월 메모를 찾을 수 없습니다.")
+            return
+
+        # 여러 행이 있을 경우, 일단 첫 번째 행 사용 (원하면 join 가능)
+        memo_text = df_filtered.iloc[0]['메모']
+
+        # 기존 로직 유지
+        str_list = memo_text.split('\n')
+        html_items = [create_indented_html(s) for s in str_list]
+        body_content = "".join(html_items)
+
+        html_code = f"""
+        <style>
+            .memo-body {{
+                font-family: 'Noto Sans KR', sans-serif;
+                word-spacing: 5px;
+            }}
+            .memo-body .indent-0 {{ padding-left: 0px; padding-top: 10px; text-indent: -30px; font-size: 17px; font-weight: bold; }}
+            .memo-body .indent-1 {{ padding-left: 20px; padding-top: 5px; text-indent: -10px; font-size: 17px; }}
+            .memo-body .indent-2 {{ padding-left: 40px; font-size: 17px; }}
+            .memo-body .indent-3 {{ padding-left: 60px; font-size: 12px; }}
+            .memo-body p {{ margin: 0.2rem 0; }}
+        </style>
+        <div class="memo-body">{body_content}</div>
+        """
+        st.markdown(html_code, unsafe_allow_html=True)
+
+    except (FileNotFoundError, KeyError):
+        st.warning(f"메모 파일을 찾을 수 없습니다: {memo_file_key}")
 
 
 
@@ -241,7 +285,7 @@ t1, t2, t3, t4, t5, t6, t7 = st.tabs(['1. 손익요약', '2. 전월 대비 손�
 with t1:
 
     st.markdown("<h4>1) 손익요약 </h4>", unsafe_allow_html=True)
-    st.markdown("<div style='text-align:right; font-size:13px; color:#666;'>[단위: 톤, 백만원]</div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 톤, 백만원]</div>", unsafe_allow_html=True)
 
     try:
         file_name = st.secrets["sheets"]["f_19"]
@@ -294,26 +338,27 @@ with t1:
         cols = disp.columns.tolist()
         c_idx = {c:i for i,c in enumerate(cols)}
 
-
         body_cols = [c for c in body.columns if c != "구분"]
-
-
-        col_map = {
-            "prev_year": next((c for c in body_cols if c.startswith("'") and "년" in c), None),  # 첫 번째 'yy년
-        }
 
         def _find(label_contains):
             return next((c for c in body_cols if label_contains in c), None)
 
         col_23 = next((c for c in body_cols if c.startswith("'") and "년" in c), None)                 # 전전년
         col_24 = next((c for c in body_cols if c != col_23 and c.startswith("'") and "년" in c), None) # 전년
-        col_pm = next((c for c in body_cols if c.endswith("월") and "계획" not in c), None)            # 전월
-        col_m  = next((c for c in body_cols if c != col_pm and c.endswith("월") and "계획" not in c), None) # 당월
-        col_diff     = _find("전월대비")
-        col_pm_plan  = next((c for c in body_cols if c.endswith("월계획") or c.endswith("월계획(②)") and c != col_m), None)
-        col_m_plan   = next((c for c in body_cols if c.endswith("월계획(②)")), None) or _find("월계획(②)")
-        col_gap      = _find("계획대비")
-        col_acc      = _find("당월누적")
+
+
+        col_pm = next((c for c in body_cols if c.endswith("월") and "계획" not in c), None)
+
+        col_m  = next((c for c in body_cols if "월(①)" in c and "계획" not in c), None)
+
+        col_diff = _find("전월대비")
+
+        col_pm_plan = next((c for c in body_cols if c.endswith("월계획")), None)
+
+        col_m_plan  = next((c for c in body_cols if c.endswith("월계획(②)")), None)
+
+        col_gap = _find("계획대비")
+        col_acc = _find("당월누적")
 
         # 상단 리본 라벨
         yy = str(int(st.session_state['year']))[-2:]
@@ -321,8 +366,8 @@ with t1:
         top_label = f"'{yy} {mm}월"
 
         # 1행에 둘 컬럼들 / 2행에 둘 컬럼들
-        row1_cols = [col_23, col_24, col_diff, col_gap, col_acc]                  
-        row2_cols = [col_pm, col_m, col_pm_plan, col_m_plan]                       
+        row1_cols = [col_23, col_24, col_diff, col_gap, col_acc]
+        row2_cols = [col_pm, col_m, col_pm_plan, col_m_plan]
 
         # ── 가짜 헤더 2행 구성 ──
         hdr1 = [''] * len(cols)   # 상단 그룹 라벨( '23년, '24년, 전월대비, 계획대비, 당월누적 )
@@ -432,7 +477,7 @@ with t1:
                 'props': [('border-top','3px solid gray !important')]
                
             }
-            for r in range (3,12)
+            for r in range (1,12)
         ]
 
         styles += spacer_rules5
@@ -589,7 +634,7 @@ with t1:
                 'props': [('border-right','3px solid gray !important')]
                
             }
-            for r in range(3,27)
+            for r in range(1,27)
         ]
 
         styles += spacer_rules18
@@ -603,22 +648,13 @@ with t1:
             already_flat=True
         )
 
+        display_memo('f_19', year, month)
+
 
     except Exception as e:
         st.error(f"손익요약 생성 중 오류: {e}")
 
 
-# with t2:
-
-#     st.markdown("<h4>1) 전월대비 손익차이 </h4>", unsafe_allow_html=True)
-#     st.markdown("<div style='text-align:right; font-size:13px; color:#666;'>[단위: 톤, 백만원]</div>", unsafe_allow_html=True)
-
-#     st.divider()
-
-#     st.markdown("<h4>2) 수출 환율 차이 </h4>", unsafe_allow_html=True)
-#     st.markdown("<div style='text-align:right; font-size:13px; color:#666;'>[단위: 톤, 백만원]</div>", unsafe_allow_html=True)
-
-#     st.divider()
 
 
 import re, io, pandas as pd
@@ -832,20 +868,17 @@ with t2:
 
 
         display_styled_df(disp_vis, styles=styles, already_flat=True)
-
-        # 주석문장
-        effect = usd_effect/10000.0
-        updown = "상승" if usd_delta > 0 else "하락"
-        sign   = "증가" if usd_delta > 0 else "감소"
-        st.markdown(f"- USD 환율 전월 대비 @{usd_delta:,.1f}원 {updown}으로 영업이익 {effect:,.2f}억 {sign}")
+        display_memo('f_21', year, month)
 
     except Exception as e:
         st.error(f"수출 환율 차이 생성 중 오류: {e}")
+    
+    st.divider()
 
 with t3:
 
     st.markdown("<h4>1) 포스코 對 JFE 입고가격 </h4>", unsafe_allow_html=True)
-    st.markdown("<div style='text-align:right; font-size:13px; color:#666;'>[단위: 톤, 백만원]</div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 천원/톤]</div>", unsafe_allow_html=True)
 
     try:
         file_name = st.secrets["sheets"]["f_23"]  # 파일 경로/시크릿 키는 환경에 맞게
@@ -949,13 +982,15 @@ with t3:
             applymap_rules=[(_noop, (row_labels, col_labels))]
         )
 
+        display_memo('f_23', year, month)
+
     except Exception as e:
         st.error(f"포스코 對 JFE 입고가격 생성 오류: {e}")
 
     st.divider()
 
     st.markdown("<h4>2) 포스코/JFE 투입비중 </h4>", unsafe_allow_html=True)
-    st.markdown("<div style='text-align:right; font-size:13px; color:#666;'>[단위: 톤, 백만원]</div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 백만원, 톤]</div>", unsafe_allow_html=True)
 
     try:
         
@@ -1160,13 +1195,16 @@ with t3:
             applymap_rules=[(_neg_red, (row_labels, col_labels))]
         )
 
+        st.markdown("<div style='text-align:left; font-size:17px; color:black;,  font-weight: bold;'>※ 전월대비 손익영향 금액 = 당월 포스코比 JFE 단가차이 x (당월 JFE 중량 - 전월 JFE 비중 적용시 당월 JFE 중량) </div>", unsafe_allow_html=True)
+
+
     except Exception as e:
         st.error(f"포스코/JFE 입고가격 생성 오류: {e}")
 
     st.divider()
 
     st.markdown("<h4>3) 메이커별 입고추이 </h4>", unsafe_allow_html=True)
-    st.markdown("<div style='text-align:right; font-size:13px; color:#666;'>[단위: 톤, 톤/천원]</div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 톤, 톤/천원]</div>", unsafe_allow_html=True)
 
     import itertools  
 
@@ -1296,7 +1334,6 @@ with t3:
             already_flat=True,
         )
 
-
     except Exception as e:
         st.error(f"메이커별 입고추이 표 생성 오류: {e}")
 
@@ -1305,7 +1342,7 @@ with t3:
 with t4:
 
     st.markdown("<h4>1) 제조 가공비 </h4>", unsafe_allow_html=True)
-    st.markdown("<div style='text-align:right; font-size:13px; color:#666;'>[단위: 톤, 백만원]</div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 톤, 백만원]</div>", unsafe_allow_html=True)
 
 
 
@@ -1387,6 +1424,7 @@ with t4:
                         'props':[('border-top','3px solid gray !important')]})
 
         display_styled_df(body, styles=styles, already_flat=True)
+        display_memo('f_26', year, month)
 
 
     except Exception as e:
@@ -1396,7 +1434,7 @@ with t4:
 
 with t5:
     st.markdown("<h4>1) 판매비와 관리비 </h4>", unsafe_allow_html=True)
-    st.markdown("<div style='text-align:right; font-size:13px; color:#666;'>[단위: 톤, 백만원]</div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 톤, 백만원]</div>", unsafe_allow_html=True)
 
     try:
         # 1) 데이터
@@ -1469,6 +1507,7 @@ with t5:
 
 
         display_styled_df(body, styles=styles, already_flat=True)
+        display_memo('f_27', year, month)
 
 
 
@@ -1484,7 +1523,7 @@ with t5:
 
 with t6:
     st.markdown("<h4>1) 성과급 및 격려금 </h4>", unsafe_allow_html=True)
-    st.markdown("<div style='text-align:right; font-size:13px; color:#666;'>[단위: 백만원]</div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 백만원]</div>", unsafe_allow_html=True)
 
     try:
         file_name = st.secrets["sheets"]["f_28"]
@@ -1545,6 +1584,8 @@ with t6:
 
 
         display_styled_df(body, styles=styles, already_flat=True)
+        st.markdown("<div style='text-align:left; font-size:17px; color:black;,  font-weight: bold;'>* '25.계획 성과급 178.4% + 격려금 100% 반영</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align:left; font-size:17px; color:black;,  font-weight: bold;'>* '24.실적 성과급 130%, 17.8억 + 격려 인당 350만원, 12.1억 지급</div>", unsafe_allow_html=True)
 
     except Exception as e:
         st.error(f"성과급 및 격려금 표 생성 오류: {e}")
@@ -1554,7 +1595,7 @@ with t6:
 
 with t7:
     st.markdown("<h4>1) 통상임금 </h4>", unsafe_allow_html=True)
-    st.markdown("<div style='text-align:right; font-size:13px; color:#666;'>[단위: 백만원]</div>",unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 백만원]</div>",unsafe_allow_html=True)
 
     try:
         file_name = st.secrets["sheets"]["f_29"]
