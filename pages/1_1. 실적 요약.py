@@ -1166,17 +1166,32 @@ with t1:
 
 
     st.divider()
-    st.markdown("""
+
+
+
+
+
+    st.markdown(
+        """
         <style>
-        .v-divider {
-            border-left: 1px solid #d3d3d3;
-            height: 100%;
-            margin: 0 auto;
+        /* 메인 컨테이너를 왼쪽에 고정 + 최소 가로폭 지정 */
+        .block-container {
+            min-width: 1600px;                  /* 두 표 다 들어가는 최소 폭으로 조정 */
+            margin-left: 0 !important;          /* 가운데 정렬 깨고 왼쪽에 딱 붙이기 */
+            margin-right: auto !important;
+        }
+
+        /* 메인 영역에 가로 스크롤 허용 */
+        .main {
+            overflow-x: auto;
         }
         </style>
-    """, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True
+    )
 
-    col_left,col_mid, col_right = st.columns([1,0.05, 1])
+
+    col_left, col_mid, col_right = st.columns([1, 0.05, 1])
 
     with col_left:
 
@@ -1191,8 +1206,8 @@ with t1:
             importlib.invalidate_caches(); importlib.reload(modules)
 
             snap = modules.create_turnover(
-                year=int(st.session_state['year']),
-                month=int(st.session_state['month']),
+                year=year,
+                month=month,
                 data=raw
             )  
 
@@ -1215,8 +1230,8 @@ with t1:
             c_idx = {c:i for i,c in enumerate(cols)}
 
             # 상단 라벨
-            yy = str(int(st.session_state['year']))[-2:]
-            used_m = snap.attrs.get('used_month', int(st.session_state['month']))
+            yy = str(year)[-2:]
+            used_m = snap.attrs.get('used_month', month)
             prev_m = snap.attrs.get('prev_month', max(1, used_m-1))
 
             subcols = [c for c in cols if isinstance(c, tuple)]
@@ -1242,11 +1257,8 @@ with t1:
             hdr_df   = pd.DataFrame([hdr1, hdr2], columns=cols)
             disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
 
-            
-
-            
             def css_overlay_text(r, c, text, strong=True):
-            # TD를 기준 위치로
+                # TD를 기준 위치로
                 base = {
                     'selector': f'tbody tr:nth-child({r}) td:nth-child({c})',
                     'props': [('position', 'relative')],
@@ -1265,9 +1277,6 @@ with t1:
                 }
                 return [base, overlay]
 
-
-            styles = []
-
             styles = [
                 {'selector': 'thead', 'props': [('display','none')]},
 
@@ -1284,178 +1293,120 @@ with t1:
                 {'selector': 'tbody tr:nth-child(n+3) td:nth-child(2)', 'props': [('text-align','center')]},
             ]
 
-
-
             spacer_rules1 = [
-                        {
-                            'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
-                            'props': [('border-bottom','2px solid white ')],
-                        
-                        }
-                        for r in (1,3,4,5)
-                    ]
-            
+                {
+                    'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+                    'props': [('border-bottom','2px solid white ')],
+                }
+                for r in (1,3,4,5)
+            ]
             styles  += spacer_rules1
 
             spacer_rules2 = [
-                        {
-                            'selector': f'tbody tr:nth-child(1) td:nth-child(2)',
-                            'props': [('border-bottom','2px solid white ')],
-                        
-                        }
-
-                    ]
-            
+                {
+                    'selector': f'tbody tr:nth-child(1) td:nth-child(2)',
+                    'props': [('border-bottom','2px solid white ')],
+                }
+            ]
             styles  += spacer_rules2
 
             spacer_rules3 = [
-                        {
-                            'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
-                            'props': [('border-right','2px solid white ')],
-                        
-                        }
-                        for r in (1,4,5,6,9,10,11)
-                    ]
-            
+                {
+                    'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+                    'props': [('border-right','2px solid white ')],
+                }
+                for r in (1,4,5,6,9,10,11)
+            ]
             styles  += spacer_rules3
 
             spacer_rules4 = [
-                        {
-                            'selector': f'tbody tr:nth-child(2) td:nth-child(1)',
-                            'props': [('border-right','2px solid white ')],
-                        
-                        }
-
-                    ]
-            
+                {
+                    'selector': f'tbody tr:nth-child(2) td:nth-child(1)',
+                    'props': [('border-right','3px solid gray ')],
+                }
+            ]
             styles  += spacer_rules4
 
             spacer_rules5 = [
-                        {
-                            'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
-                            'props': [('border-top','3px solid gray ')],
-                        
-                        }
-                        for r in (1,2,4,5,6,7,9,10,11,12)
-                    ]
-            
+                {
+                    'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
+                    'props': [('border-top','3px solid gray ')],
+                }
+                for r in (1,2,4,5,6,7,9,10,11,12)
+            ]
             styles  += spacer_rules5
 
             spacer_rules6 = [
-                        {
-                            'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
-                            'props': [('border-bottom','3px solid gray ')],
-                        
-                        }
-                        for r in range (1,13)
-                    ]
-            
+                {
+                    'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
+                    'props': [('border-bottom','3px solid gray ')],
+                }
+                for r in range(1,13)
+            ]
             styles  += spacer_rules6
 
             spacer_rules7 = [
-                        {
-                            'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
-                            'props': [('border-top','3px solid gray ')],
-                        
-                        }
-                        for r in (3,8)
-                    ]
-            
-            styles  += spacer_rules7
-
-
-
-            spacer_rules7 = [
-                        {
-                            'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
-                            'props': [('border-left','3px solid gray ')],
-                        
-                        }
-                        for r in (3,8,9)
-                    ]
-            
-            styles  += spacer_rules7
-
-
-
-            spacer_rules7 = [
-                        {
-                            'selector': f'tbody tr:nth-child(1) td:nth-child(3)',
-                            'props': [('border-right','3px solid gray ')],
-                        
-                        }
-                        # for r in (3,12)
-                    ]
-            
+                {
+                    'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+                    'props': [('border-top','3px solid gray ')],
+                }
+                for r in (3,8)
+            ]
             styles  += spacer_rules7
 
             spacer_rules7 = [
-                        {
-                            'selector': f'tbody tr:nth-child(1) td:nth-child(3)',
-                            'props': [('border-right','3px solid gray ')],
-                        
-                        }
-                        # for r in (3)
-                    ]
-            
+                {
+                    'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+                    'props': [('border-left','3px solid gray ')],
+                }
+                for r in (3,8,9)
+            ]
             styles  += spacer_rules7
 
             spacer_rules7 = [
-                        {
-                            'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
-                            'props': [('border-right','3px solid gray ')],
-                        
-                        }
-                        for r in (2,7)
-    
-                    ]
-
-            
+                {
+                    'selector': f'tbody tr:nth-child(1) td:nth-child(3)',
+                    'props': [('border-right','3px solid gray ')],
+                }
+            ]
             styles  += spacer_rules7
 
-
-
-            
-
-
-
+            spacer_rules7 = [
+                {
+                    'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
+                    'props': [('border-right','3px solid gray ')],
+                }
+                for r in (2,7)
+            ]
+            styles  += spacer_rules7
 
             display_styled_df(disp_vis, styles=styles, already_flat=True)
             display_memo('f_4', year, month)
 
-
         except Exception as e:
             st.error(f"회전일 표 생성 중 오류: {e}")
-
-        # st.divider()
-
-        # st.markdown("<h4>5) ROE</h4>", unsafe_allow_html=True)
 
 
     with col_mid:
         st.markdown("<div class='v-divider'></div>", unsafe_allow_html=True)
 
+
     with col_right:
         try:
-            
             st.markdown("<h4>5) ROE</h4>", unsafe_allow_html=True)
-
-
             st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 백만원]</div>", unsafe_allow_html=True)
         
             file_name = st.secrets["sheets"]["f_5"]  
             raw = pd.read_csv(file_name, dtype=str)
 
-
             import importlib
             importlib.invalidate_caches(); importlib.reload(modules)
 
             base = modules.create_roe_table(
-                year=int(st.session_state['year']),
-                month=int(st.session_state['month']),
+                year=year,
+                month=month,
                 data=raw
             )
-
 
             cols_all = base.columns.tolist()
             disp = base.copy()
@@ -1483,7 +1434,6 @@ with t1:
                 disp.loc[ni_key, cols_all] = disp.loc[ni_key, cols_all].apply(fmt_amt)
             disp = disp.reset_index().rename(columns={"index": "구분"})
 
-
             styles = [
                 {'selector': 'thead th', 'props': [('text-align','center'), ('padding','10px 8px'), ('font-weight','600')]},
                 {'selector': 'tbody td', 'props': [('padding','8px 10px'), ('text-align','right')]},
@@ -1502,10 +1452,18 @@ with t1:
         
             display_memo('f_5', year, month)
         
-
-
         except Exception as e:
             st.error(f"ROE 표 생성 중 오류: {e}")
+
+    # ─ 가로 스크롤 래퍼 닫기 ─
+    st.markdown(
+        """
+        </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 
 
 
@@ -2245,11 +2203,9 @@ with t2:
 
 
     try:
-        file_name = st.secrets["sheets"]["f_12"]  
+        file_name = st.secrets["sheets"]["f_12"]
         raw = pd.read_csv(file_name, dtype=str)
 
-        import numpy as np
-        import pandas as pd
 
         # 1) 유틸
         def _to_num(s: pd.Series) -> pd.Series:
@@ -2290,7 +2246,7 @@ with t2:
             "당기순이익",
             "조정",
             "감가상각비",
-            "기타",                              # 1번째 기타(영업 영역 위치)
+            "기타",                            
             "자산부채증감",
             "매출채권 감소(증가)",
             "재고자산 감소(증가)",
@@ -2367,7 +2323,7 @@ with t2:
             prev_ms   = range(1, used_m) if used_m > 1 else []
             vals_prev = _block([year], prev_ms) if prev_ms else [0.0] * len(order_with_n)
             vals_ytd  = _block([year], range(1, used_m + 1))
-            vals_curr = (np.array(vals_ytd) - np.array(vals_prev)).tolist()  # 당월 = 누적 - 전월누적
+            vals_curr = (np.array(vals_ytd) - np.array(vals_prev)).tolist() 
 
             base = pd.DataFrame(
                 {
