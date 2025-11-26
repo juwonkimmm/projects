@@ -251,7 +251,7 @@ def load_defect(url: str) -> pd.DataFrame:
 year = int(st.session_state['year'])
 month = int(st.session_state['month'])
 
-st.markdown(f"## {year}년 {month}월 실적 분석")
+st.markdown(f"## {year}년 {month}월 실적 요약")
 t1, t2, t3 = st.tabs(['주요경영지표', '주요경영지표(본사)', '연간사업계획'])
 st.divider()
 
@@ -2581,7 +2581,8 @@ with t2:
 
         # ─ 3단 헤더(가짜 헤더 3행 삽입) ─
         cols = disp.columns.tolist()
-        c_idx = {c:i for i,c in enumerate(cols)}
+        c_idx = {c: i for i, c in enumerate(cols)}
+
         gu_i    = c_idx['구분']
         month_i = c_idx['당월']
         diff_i  = c_idx['전월비 증감']
@@ -2603,22 +2604,43 @@ with t2:
         if prev_m is None:
             prev_m = used_m - 1 if used_m and used_m > 1 else 12
 
-        yy = str(int(st.session_state['year']))[-2:]
+        # 연도 포맷
+        year_int = int(st.session_state['year'])
+        yy      = f"{year_int % 100:02d}"          # 선택연도 (예: 25)
+        yy_prev = f"{(year_int - 1) % 100:02d}"    # 전년도   (예: 24)
+
+        # base에서 사용한 컬럼 라벨과 맞추기
+        prev_year_col  = f"'{yy_prev}년말"   # 전년도 12월 잔액
+        prev_month_col = f"'{yy}"           # 선택 전월(전월)
+
         top_label = f"'{yy} {used_m}월"
         prev_text = f"'{yy} {prev_m}월"
 
+        # 회사별 컬럼(회사명들)만 추출
+        company_labels = [
+            c for c in cols
+            if c not in [SPACER, '구분', prev_year_col, prev_month_col, '당월', '전월비 증감']
+        ]
 
-        company_labels = [c for c in cols if c not in [SPACER,'구분',"'24년말","'25",'당월','전월비 증감']]
+        # ─ 가짜 헤더 구성 ─
+        hdr1 = [''] * len(cols)
 
-        hdr1 = [''] * len(cols); 
-        hdr2 = [''] * len(cols); hdr2[gu_i] = '구분'; hdr2[c_idx["'24년말"]] = "'24년말"; hdr2[c_idx["'25"]] = prev_text; hdr2[month_i] = top_label; hdr2[diff_i] = '전월비 증감'
-        hdr3 = [''] * len(cols); 
-        for k in company_labels: hdr3[c_idx[k]] = k
+        hdr2 = [''] * len(cols)
+        hdr2[gu_i] = '구분'
+        hdr2[c_idx[prev_year_col]]  = prev_year_col          # 예: '24년말, '25년말 ...
+        hdr2[c_idx[prev_month_col]] = prev_text              # 예: '25 3월
+        hdr2[month_i]               = top_label              # 예: '25 4월
+        hdr2[diff_i]                = '전월비 증감'
+
+        hdr3 = [''] * len(cols)
+        for k in company_labels:
+            hdr3[c_idx[k]] = k
 
         hdr_df   = pd.DataFrame([hdr1, hdr2, hdr3], columns=cols)
         disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
 
         last_company_i = max((c_idx[k] for k in company_labels), default=month_i)
+
 
         styles = [
             {'selector': 'thead', 'props': [('display','none')]},

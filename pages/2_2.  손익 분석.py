@@ -654,6 +654,8 @@ with t1:
     except Exception as e:
         st.error(f"손익요약 생성 중 오류: {e}")
 
+    st.divider()
+
 
 
 

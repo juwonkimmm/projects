@@ -1,0 +1,3218 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import warnings
+import modules  
+import io
+import re
+from itertools import groupby  
+warnings.filterwarnings('ignore')
+st.set_page_config(layout="wide", initial_sidebar_state="expanded")
+
+# =========================
+# 공통 테이블 렌더 (인덱스 숨김 + 중복 컬럼 안전)
+# =========================
+
+
+import re, io, pandas as pd
+from urllib.request import urlopen, Request
+
+
+
+
+
+
+def rowspan_like_for_index(blocks, level=2, header_rows=1):
+    """
+    멀티인덱스(행) 열에서, 연속된 행들을 '한 칸처럼' 보이게 하는 CSS 스타일을 만들어줍니다.
+    - blocks: [(start_data_row, end_data_row), ...]  # 데이터 기준 0-based, 양끝 포함
+    - level:  대상 인덱스 레벨 번호 (구분 레벨이 보통 2)
+    - header_rows: tbody 위에 끼운 가짜 헤더 수(보통 1)
+    반환: set_table_styles에 append할 dict 리스트
+    """
+    styles = []
+    to_nth = lambda r: r + header_rows + 1  
+    for start, end in blocks:
+        top = to_nth(start)
+        mid = [to_nth(r) for r in range(start + 1, end)]
+        bot = to_nth(end)
+
+        # 시작행: 아래 경계 제거
+        styles.append({
+            'selector': f'tbody tr:nth-child({top}) th.row_heading.level{level}',
+            'props': [('border-bottom', '0')]
+        })
+        # 중간행들: 위/아래 경계 제거 + 텍스트 숨김
+        for r in mid:
+            styles.append({
+                'selector': f'tbody tr:nth-child({r}) th.row_heading.level{level}',
+                'props': [('border-top', '0'), ('border-bottom', '0'),
+                          ('color', 'transparent'), ('text-shadow', 'none')]
+            })
+        # 끝행: 위 경계 제거
+        styles.append({
+            'selector': f'tbody tr:nth-child({bot}) th.row_heading.level{level}',
+            'props': [('border-top', '0')]
+        })
+    return styles
+
+
+def create_indented_html(s):
+    """문자열의 앞 공백을 기반으로 들여쓰기된 HTML <p> 태그를 생성합니다."""
+    content = s.lstrip(' ')
+    num_spaces = len(s) - len(content)
+    indent_level = num_spaces // 2
+    return f'<p class="indent-{indent_level}">{content}</p>'
+
+
+def display_memo(memo_file_key, year, month,):
+    """메모 파일 키와 년/월을 받아 해당 메모를 화면에 표시합니다."""
+    file_name = st.secrets['memos'][memo_file_key]
+    try:
+        df_memo = pd.read_csv(file_name)
+
+        # 년도/월 기준으로 필터
+        df_filtered = df_memo[(df_memo['년도'] == year) & (df_memo['월'] == month)]
+
+        if df_filtered.empty:
+            st.warning(f"{year}년 {month}월 메모를 찾을 수 없습니다.")
+            return
+
+        # 여러 행이 있을 경우, 일단 첫 번째 행 사용 (원하면 join 가능)
+        memo_text = df_filtered.iloc[0]['메모']
+
+        # 기존 로직 유지
+        str_list = memo_text.split('\n')
+        html_items = [create_indented_html(s) for s in str_list]
+        body_content = "".join(html_items)
+
+        html_code = f"""
+        <style>
+            .memo-body {{
+                font-family: 'Noto Sans KR', sans-serif;
+                word-spacing: 5px;
+            }}
+            .memo-body .indent-0 {{ padding-left: 0px; padding-top: 10px; text-indent: -30px; font-size: 17px; font-weight: bold; }}
+            .memo-body .indent-1 {{ padding-left: 20px; padding-top: 5px; text-indent: -10px; font-size: 17px; }}
+            .memo-body .indent-2 {{ padding-left: 40px; font-size: 17px; }}
+            .memo-body .indent-3 {{ padding-left: 60px; font-size: 12px; }}
+            .memo-body p {{ margin: 0.2rem 0; }}
+        </style>
+        <div class="memo-body">{body_content}</div>
+        """
+        st.markdown(html_code, unsafe_allow_html=True)
+
+    except (FileNotFoundError, KeyError):
+        st.warning(f"메모 파일을 찾을 수 없습니다: {memo_file_key}")
+
+def with_inline_header_row(df: pd.DataFrame,
+                           index_names=('', '', '구분'),
+                           index_values=('', '', '구분')) -> pd.DataFrame:
+    """
+    멀티인덱스(행) 위에 '같은 행 높이'로 컬럼명을 보여주기 위해
+    본문 첫 행에 '헤더용 가짜 행'을 삽입한다.
+    - index_names: df.index.names 를 덮어쓸 이름 (마지막만 '구분'으로 보이게)
+    - index_values: 가짜 행의 인덱스 값 튜플 (마지막 칸에 '구분' 텍스트 배치)
+    """
+    # 1) 원본 인덱스 이름 정리
+    if isinstance(df.index, pd.MultiIndex):
+        df.index = df.index.set_names(index_names)
+    else:
+        df.index.name = index_names[-1]
+
+    # 2) 헤더용 1행(컬럼명 그대로 출력) 만들기
+    hdr = pd.DataFrame([list(df.columns)], columns=df.columns)
+    if isinstance(df.index, pd.MultiIndex):
+        hdr.index = pd.MultiIndex.from_tuples([index_values], names=index_names)
+    else:
+        hdr.index = pd.Index([index_values[-1]], name=index_names[-1])
+
+    # 3) 본문 위에 합치기 (hdr가 첫 행이 됨)
+    df2 = pd.concat([hdr, df], axis=0)
+    return df2
+
+def display_styled_df(
+    df,
+    styles=None,
+    highlight_cols=None,
+    already_flat=False,
+    applymap_rules=None, 
+):
+
+
+
+    if already_flat:
+        df_for_style = df.copy()
+    else:
+        df_for_style = df.reset_index()
+
+    # (중복 컬럼명 고유화)
+    new_cols, seen = [], {}
+    for c in df_for_style.columns:
+        c_str = str(c)
+        seen[c_str] = seen.get(c_str, 0) + 1
+        new_cols.append(c_str if seen[c_str] == 1 else f"{c_str}.{seen[c_str]-1}")
+    df_for_style.columns = new_cols
+
+    hi_set = set(map(str, (highlight_cols or [])))
+    def highlight_columns(col):
+        return ['background-color: #f0f0f0'] * len(col) if str(col.name) in hi_set else [''] * len(col)
+
+    styled_df = (
+        df_for_style.style
+
+        .format(lambda x: f"{x:,.0f}" if isinstance(x, (int,float,np.integer,np.floating)) and pd.notnull(x) else x)
+        .set_properties(**{'text-align':'right','font-family':'Noto Sans KR'})
+        .apply(highlight_columns, axis=0)
+        .hide(axis="index")
+    )
+
+    if styles:
+        styled_df = styled_df.set_table_styles(styles)
+
+    if applymap_rules:
+        for func, subset in applymap_rules:
+            rows, cols = subset  # 라벨 기반 인덱서여야 함
+            styled_df = styled_df.applymap(func, subset=pd.IndexSlice[rows, cols])
+
+    st.markdown(
+        f"<div style='display:flex;justify-content:left'>{styled_df.to_html()}</div>",
+        unsafe_allow_html=True
+    )
+
+
+
+# =========================
+# 날짜 선택 사이드바
+# =========================
+this_year = datetime.today().year
+current_month = datetime.today().month
+
+def _date_update_callback():
+    st.session_state.year = st.session_state.year_selector
+    st.session_state.month = st.session_state.month_selector
+
+def create_sidebar():
+    with st.sidebar:
+        st.title("날짜 선택")
+        if 'year' not in st.session_state:
+            st.session_state.year = this_year
+        if 'month' not in st.session_state:
+            st.session_state.month = current_month
+
+        st.selectbox('년(Year)', range(2020, 2031),
+                     key='year_selector',
+                     index=st.session_state.year - 2020,
+                     on_change=_date_update_callback)
+
+        st.selectbox('월(Month)', range(1, 13),
+                     key='month_selector',
+                     index=st.session_state.month - 1,
+                     on_change=_date_update_callback)
+
+        st.info(f"선택된 날짜: {st.session_state.year}년 {st.session_state.month}월")
+
+create_sidebar()
+
+# =========================
+# 안전 로더 (원본 '톤' 단위 그대로)
+# =========================
+@st.cache_data(ttl=1800)
+def load_f40(url: str) -> pd.DataFrame:
+    df = pd.read_csv(url, dtype=str)
+
+    # 실적 → float
+    if '실적' in df.columns:
+        s = df['실적'].str.replace(',', '', regex=False)
+        df['실적'] = pd.to_numeric(s, errors='coerce').fillna(0.0)
+    else:
+        df['실적'] = 0.0
+
+    # 월 → Int64
+    if '월' in df.columns:
+        m = (df['월'].astype(str).str.replace('월', '', regex=False)
+             .str.replace('.', '', regex=False).str.strip()
+             .replace({'': np.nan, 'nan': np.nan, 'None': np.nan, 'NULL': np.nan}))
+        df['월'] = pd.to_numeric(m, errors='coerce').astype('Int64')
+    else:
+        df['월'] = pd.Series([pd.NA] * len(df), dtype='Int64')
+
+    # 연도 → Int64 (2자리면 20xx)
+    if '연도' in df.columns:
+        y = (df['연도'].astype(str).str.extract(r'(\d{4}|\d{2})')[0]
+             .replace({'': np.nan, 'nan': np.nan, 'None': np.nan, 'NULL': np.nan}))
+        y = y.apply(lambda v: f"20{v}" if isinstance(v, str) and len(v) == 2 else v)
+        df['연도'] = pd.to_numeric(y, errors='coerce').astype('Int64')
+    else:
+        df['연도'] = pd.Series([pd.NA] * len(df), dtype='Int64')
+
+    # 구분 → 문자열
+    for c in ['구분1', '구분2', '구분3', '구분4']:
+        if c in df.columns:
+            df[c] = df[c].fillna('').astype(str)
+        else:
+            df[c] = ''
+    return df
+
+@st.cache_data(ttl=1800)
+def load_defect(url: str) -> pd.DataFrame:
+    """부적합 데이터 로더"""
+    df = pd.read_csv(url, dtype=str)
+    # 숫자 형변환
+    for c in ['연도', '월', '실적']:
+        df[c] = pd.to_numeric(df.get(c), errors='coerce')
+    for c in ['구분1', '구분2', '구분3', '구분4']:
+        if c in df.columns:
+            df[c] = df[c].fillna('').astype(str)
+        else:
+            df[c] = ''
+    return df
+
+# =========================
+# UI 본문
+# =========================
+year = int(st.session_state['year'])
+month = int(st.session_state['month'])
+
+st.markdown(f"## {year}년 {month}월 해외법인실적")
+
+t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(['1. 손익요약', '2. 현금흐름', '3. 재무상태표', '4. 판매구성', '5. 전월대비 손익차이', '6. 재고자산 현황', '7. 채권현황', '8. 인원현황'])
+
+with t2:
+
+    st.markdown("<h4> 1) 현금흐름 남통법인</h4>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 톤, 백만원, %]</div>", unsafe_allow_html=True)
+
+    try:
+        file_name = st.secrets["sheets"]["f_62_63_64"]
+        raw = pd.read_csv(file_name, dtype=str)
+
+        # 1) 유틸
+        def _to_num(s: pd.Series) -> pd.Series:
+            s = (
+                s.fillna("")
+                .astype(str)
+                .str.replace(",", "", regex=False)
+                .str.strip()
+            )
+            v = pd.to_numeric(s, errors="coerce")
+            return v.fillna(0.0)
+
+        def _clean_cf_namtong(df_raw: pd.DataFrame) -> pd.DataFrame:
+            df = df_raw.copy()
+            need = {"구분1", "구분2", "연도", "월", "실적"}
+            miss = need - set(df.columns)
+            if miss:
+                raise ValueError(f"필수 컬럼 누락: {miss}")
+
+            for c in ["구분1", "구분2", "구분3", "구분4"]:
+                if c in df.columns:
+                    df[c] = (
+                        df[c]
+                        .astype(str)
+                        .str.strip()
+                        .str.replace(r"\s+", " ", regex=True)
+                    )
+
+            df["연도"] = pd.to_numeric(df["연도"], errors="coerce").astype("Int64")
+            # 월은 '전월누적', '당월', '당월누적' 같은 문자열이 있으므로 숫자로 바꾸지 않는다
+            df["월"] = df["월"].fillna("").astype(str).str.strip()
+            df["실적"] = _to_num(df["실적"])
+
+            # 남통만 사용
+            df = df[df["구분1"] == "남통"].copy()
+
+            # 원본 순서 보존 (중복 라벨의 N번째 구분용)
+            df["__ord__"] = range(len(df))
+            return df
+
+        df0 = _clean_cf_namtong(raw)
+        year = int(st.session_state["year"])
+        month = int(st.session_state["month"])
+
+        # 2) 원하는 행 순서(= 구분2 값 순서)
+        item_order = [
+            "영업활동현금흐름",
+            "당기순이익",
+            "조정",
+            "감가상각비",
+            "기타",
+            "자산부채증감",
+            "매출채권 감소(증가)",
+            "기타채권 감소(증가)",   # ★ 추가
+            "재고자산 감소(증가)",
+            "기타자산 감소(증가)",
+            "매입채무 증가(감소)",
+            "기타채무 증가(감소)",
+            "퇴직급여부채증가(감소)",
+            "법인세납부",
+            "이자의 수취",
+            "이자의 지급",
+            "투자활동현금흐름",
+            "유형자산취득",
+            "무형자산취득",
+            "기타 투자활동",
+            "재무활동현금흐름",
+            "차입금의 증가(감소)",
+            "현금성자산의 증감",
+            "기초의 현금",
+            "현금성자산의 환율변동",
+            "기말의 현금",
+        ]
+
+        # (중요) 같은 라벨의 N번째 등장만 집계하도록 번호 부여
+        name_counts = {}
+        order_with_n = []
+        for name in item_order:
+            name_counts[name] = name_counts.get(name, 0) + 1
+            order_with_n.append((name, name_counts[name]))  # ('기타',1), ('기타',2)...
+
+        index_labels = [nm for nm, _ in order_with_n]
+
+        # 3) 컬럼 라벨
+        col_prev2_label = f"{str(year - 2)[-2:]}년"   # '23년
+        col_prev1_label = f"{str(year - 1)[-2:]}년"   # '24년
+        col_currsum_label = "당월누적"                # 선택년도 당월누적
+
+        # 4) 선택연도에 데이터 있는지 체크 (월은 구분자라서 신경 안 씀)
+        sel_year = df0[
+            (df0["연도"] == year)
+            & (df0["구분2"].isin(item_order))
+        ]
+
+        used_m = month  # 헤더에 표시할 선택월 텍스트용
+
+        if sel_year.empty:
+            base = pd.DataFrame(
+                {
+                    col_prev2_label:   [np.nan] * len(index_labels),
+                    col_prev1_label:   [np.nan] * len(index_labels),
+                    "전월누적":         [np.nan] * len(index_labels),
+                    "당월":             [np.nan] * len(index_labels),
+                    col_currsum_label: [np.nan] * len(index_labels),
+                },
+                index=pd.Index(index_labels, name="구분"),
+                dtype=float
+            )
+
+        else:
+            # -------------------------------
+            # 5) 집계 함수들
+            # -------------------------------
+
+            # (1) 전전년도/전년도: 해당 연도 전체 합계
+            #     2023, 2024는 구분2별 1건씩이라는 가정 ⇒ nth 사용
+            def _sum_item_year(name: str, nth: int, y: int) -> float:
+                sub = df0[
+                    (df0["연도"] == y)
+                    & (df0["구분2"] == name)
+                ].sort_values("__ord__", kind="stable")
+                if len(sub) >= nth:
+                    return float(sub.iloc[nth - 1]["실적"])
+                return 0.0
+
+            def _block_year(y: int):
+                return [_sum_item_year(nm, nth, y) for (nm, nth) in order_with_n]
+
+            # (2) 선택연도: 월 컬럼의 문자열(전월누적/당월/당월누적)을 그대로 사용
+            def _sum_item_kind(name: str, nth: int, y: int, kind: str) -> float:
+                sub = df0[
+                    (df0["연도"] == y)
+                    & (df0["월"] == kind)
+                    & (df0["구분2"] == name)
+                ].sort_values("__ord__", kind="stable")
+                if len(sub) >= nth:
+                    return float(sub.iloc[nth - 1]["실적"])
+                return 0.0
+
+            def _block_kind(y: int, kind: str):
+                return [_sum_item_kind(nm, nth, y, kind) for (nm, nth) in order_with_n]
+
+            # -------------------------------
+            # 6) 컬럼별 값 계산
+            # -------------------------------
+            vals_prev2 = _block_year(year - 2)   # 예: 2023
+            vals_prev1 = _block_year(year - 1)   # 예: 2024
+
+            # 선택년도(예: 2025): 월 컬럼 값이 '전월누적' / '당월' / '당월누적' 인 것 사용
+            vals_prev = _block_kind(year, "전월누적")
+            vals_curr = _block_kind(year, "당월")
+            vals_ytd  = _block_kind(year, "당월누적")
+
+            base = pd.DataFrame(
+                {
+                    col_prev2_label:   vals_prev2,
+                    col_prev1_label:   vals_prev1,
+                    "전월누적":         vals_prev,
+                    "당월":             vals_curr,
+                    col_currsum_label: vals_ytd,
+                },
+                index=pd.Index(index_labels, name="구분"),
+                dtype=float
+            )
+
+            # -------------------------------
+            # 6-1) 파생 항목 강제 재계산
+            # -------------------------------
+            def _row(label: str) -> pd.Series:
+                """해당 라벨이 없으면 0으로 채운 Series 반환(안전장치)"""
+                if label in base.index:
+                    return base.loc[label]
+                else:
+                    return pd.Series(0.0, index=base.columns, dtype=float)
+
+            # 조정 = 감가상각비 + 기타
+            base.loc["조정"] = _row("감가상각비") + _row("기타")
+
+            # 자산부채증감 =
+            #   매출채권 감소(증가) + 기타채권 감소(증가) + 기타자산 감소(증가)
+            #   + 재고자산 감소(증가) + 매입채무 증가(감소)
+            #   + 기타채무 증가(감소) + 퇴직급여부채증가(감소)
+            base.loc["자산부채증감"] = (
+                _row("매출채권 감소(증가)")
+                + _row("기타채권 감소(증가)")
+                + _row("기타자산 감소(증가)")
+                + _row("재고자산 감소(증가)")
+                + _row("매입채무 증가(감소)")
+                + _row("기타채무 증가(감소)")
+                + _row("퇴직급여부채증가(감소)")
+            )
+
+            # 영업활동현금흐름 =
+            #   당기순이익 + 조정 + 자산부채증감
+            #   + 법인세납부 + 이자의 수취 + 이자의 지급
+            base.loc["영업활동현금흐름"] = (
+                _row("당기순이익")
+                + base.loc["조정"]
+                + base.loc["자산부채증감"]
+                + _row("법인세납부")
+                + _row("이자의 수취")
+                + _row("이자의 지급")
+            )
+
+            # 투자활동현금흐름 = 유형자산취득 + 무형자산취득 + 기타 투자활동
+            base.loc["투자활동현금흐름"] = (
+                _row("유형자산취득")
+                + _row("무형자산취득")
+                + _row("기타 투자활동")
+            )
+
+            # 재무활동현금흐름 = 차입금의 증가(감소)
+            base.loc["재무활동현금흐름"] = _row("차입금의 증가(감소)")
+
+            # 현금성자산의 증감 =
+            #   영업활동현금흐름 + 투자활동현금흐름 + 재무활동현금흐름
+            base.loc["현금성자산의 증감"] = (
+                base.loc["영업활동현금흐름"]
+                + base.loc["투자활동현금흐름"]
+                + base.loc["재무활동현금흐름"]
+            )
+
+        # 7) 표시 포맷(괄호표기)
+        def fmt_cell(x):
+            if pd.isna(x):
+                return ""
+            try:
+                v = float(x)
+            except Exception:
+                return x
+            return f"({abs(int(round(v))):,})" if v < 0 else f"{int(round(v)):,}"
+
+        disp = base.copy()
+        for c in disp.columns:
+            disp[c] = disp[c].apply(fmt_cell)
+
+        # 8) 스페이서 + 2단 헤더
+        disp = disp.reset_index()
+        SPACER = "__spacer__"
+        disp.insert(0, SPACER, "")
+
+        cols = disp.columns.tolist()
+        c_idx = {c: i for i, c in enumerate(cols)}
+        yy = str(year)[-2:]
+        top_label = f"'{yy} {used_m}월"   # 필요하면 상단 타이틀 등에 사용
+
+        hdr1 = [''] * len(cols)
+        hdr2 = [''] * len(cols)
+
+        # 1행 헤더
+        hdr1[c_idx['구분']]             = '구분'
+        hdr1[c_idx[col_prev2_label]]   = col_prev2_label
+        hdr1[c_idx[col_prev1_label]]   = col_prev1_label
+        hdr1[c_idx[col_currsum_label]] = col_currsum_label   # 당월누적
+
+        # 2행 헤더 (선택년도 부분)
+        hdr2[c_idx['전월누적']]         = '전월누적'
+        hdr2[c_idx['당월']]             = '당월'
+
+        hdr_df = pd.DataFrame([hdr1, hdr2], columns=cols)
+        disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
+
+
+
+
+        # 9) 스타일 – 네가 쓰던 거 그대로
+        styles = [
+            {'selector': 'thead', 'props': [('display','none')]},
+            {'selector': 'tbody tr:nth-child(1) td', 'props': [('text-align','center'), ('padding','8px 8px'), ('font-weight','600')]},
+            {'selector': 'tbody tr:nth-child(2) td', 'props': [('text-align','center'), ('padding','10px 8px'), ('font-weight','600')]},
+            {'selector': 'tbody td:nth-child(1)', 'props': [('width','8px'), ('border-right','0')]},
+            {'selector': 'tbody tr:nth-child(n+3) td', 'props': [('text-align','right'), ('padding','8px 10px')]},
+            {'selector': 'tbody tr:nth-child(n+3) td:nth-child(2)', 'props': [('text-align','left')]},
+            {'selector': 'tbody tr:nth-child(3) td', 'props': [('border-top','3px solid gray')]},
+            {'selector': 'tbody tr:nth-child(1) td', 'props': [('border-top','3px solid gray')]},
+            {'selector': 'td:nth-child(2)', 'props': [('border-right','3px solid gray')]},
+        ]
+
+        # 구분 너비 확장
+        styles.append({
+            'selector': 'tbody td:nth-child(2)',
+            'props': [
+                ('min-width','220px !important'),
+                ('width','220px !important'),
+                ('white-space','nowrap')
+            ]
+        })
+
+        # spacer_rules1 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #         'props': [('text-align','right')]
+        #     }
+        #     for r in (6,7,9,10,11,12,13,20,21,22)
+        # ]
+        # styles += spacer_rules1    
+
+        # spacer_rules2 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #         'props': [('border-right','3px solid gray !important')]
+        #     }
+        #     for r in (4,5,6,7,8,9,10,11,12,13,14,16,17,19,20,21,22)
+        # ]
+        # styles += spacer_rules2
+
+        # spacer_rules2 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #         'props': [('border-right','2px solid white !important')]
+        #     }
+        #     for r in (1,2,3,15,18,23,24,25)
+        # ]
+        # styles += spacer_rules2
+
+        # spacer_rules2 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #         'props': [('border-bottom','3px solid gray !important')]
+        #     }
+        #     for r in (3,14,15,17,18,22,23,24)
+        # ]
+        # styles += spacer_rules2
+
+        # spacer_rules4 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #         'props': [('border-top','2px solid white !important')]
+        #     }
+        #     for r in (6,7,9,10,11,12,13,17,20,21,22)
+        # ]
+        # styles += spacer_rules4
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #         'props': [('border-bottom','2px solid white !important')]
+        #     }
+        #     for r in range(1,24)
+        # ]
+        # styles += spacer_rules5
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #         'props': [('border-bottom','3px solid gray !important')]
+        #     }
+        #     for r in (14,17,22,23,24)
+        # ]
+        # styles += spacer_rules6
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
+        #         'props': [('border-top','2px solid white !important')]
+        #     }
+        #     for r in (2,3,4,7)
+        # ]
+        # styles += spacer_rules6
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+        #         'props': [('border-right','2px solid white !important')]
+        #     }
+        #     for r in (5,6)
+        # ]
+        # styles += spacer_rules6
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(4)',
+        #         'props': [('border-right','3px solid gray !important')]
+        #     }
+        #     for r in (1,2)
+        # ]
+        # styles += spacer_rules6
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(3)',
+        #         'props': [('border-right','3px solid gray !important')]
+        #     }
+        #     for r in (1,2)
+        # ]
+        # styles += spacer_rules6
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+        #         'props': [('border-bottom','2px solid white !important')]
+        #     }
+        #     for r in (5,6)
+        # ]
+        # styles += spacer_rules6
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
+        #         'props': [('border-right','2px solid white !important')]
+        #     }
+        #     for r in (5,6)
+        # ]
+        # styles += spacer_rules6
+
+        display_styled_df(disp_vis, styles=styles, already_flat=True)
+        display_memo('f_62', year, month)
+
+    except Exception as e:
+        st.error(f"남통 현금흐름표 생성 중 오류: {e}")
+
+    st.divider()
+
+    st.markdown("<h4> 2) 현금흐름 천진법인</h4>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 톤, 백만원, %]</div>", unsafe_allow_html=True)
+
+    try:
+        file_name = st.secrets["sheets"]["f_62_63_64"]
+        raw = pd.read_csv(file_name, dtype=str)
+
+        # 1) 유틸
+        def _to_num(s: pd.Series) -> pd.Series:
+            s = (
+                s.fillna("")
+                .astype(str)
+                .str.replace(",", "", regex=False)
+                .str.strip()
+            )
+            v = pd.to_numeric(s, errors="coerce")
+            return v.fillna(0.0)
+
+        def _clean_cf_namtong(df_raw: pd.DataFrame) -> pd.DataFrame:
+            df = df_raw.copy()
+            need = {"구분1", "구분2", "연도", "월", "실적"}
+            miss = need - set(df.columns)
+            if miss:
+                raise ValueError(f"필수 컬럼 누락: {miss}")
+
+            for c in ["구분1", "구분2", "구분3", "구분4"]:
+                if c in df.columns:
+                    df[c] = (
+                        df[c]
+                        .astype(str)
+                        .str.strip()
+                        .str.replace(r"\s+", " ", regex=True)
+                    )
+
+            df["연도"] = pd.to_numeric(df["연도"], errors="coerce").astype("Int64")
+            # 월은 '전월누적', '당월', '당월누적' 같은 문자열이 있으므로 숫자로 바꾸지 않는다
+            df["월"] = df["월"].fillna("").astype(str).str.strip()
+            df["실적"] = _to_num(df["실적"])
+
+            # 천진만 사용
+            df = df[df["구분1"] == "천진"].copy()
+
+            # 원본 순서 보존 (중복 라벨의 N번째 구분용)
+            df["__ord__"] = range(len(df))
+            return df
+
+        df0 = _clean_cf_namtong(raw)
+        year = int(st.session_state["year"])
+        month = int(st.session_state["month"])
+
+        # 2) 원하는 행 순서(= 구분2 값 순서)
+        item_order = [
+            "영업활동현금흐름",
+            "당기순이익",
+            "조정",
+            "감가상각비",
+            "기타",
+            "자산부채증감",
+            "매출채권 감소(증가)",
+            "기타채권 감소(증가)",   # ★ 추가
+            "재고자산 감소(증가)",
+            "기타자산 감소(증가)",
+            "매입채무 증가(감소)",
+            "기타채무 증가(감소)",
+            "퇴직급여부채증가(감소)",
+            "법인세납부",
+            "이자의 수취",
+            "이자의 지급",
+            "투자활동현금흐름",
+            "유형자산취득",
+            "무형자산취득",
+            "기타 투자활동",
+            "재무활동현금흐름",
+            "차입금의 증가(감소)",
+            "현금성자산의 증감",
+            "기초의 현금",
+            "현금성자산의 환율변동",
+            "기말의 현금",
+        ]
+
+        # (중요) 같은 라벨의 N번째 등장만 집계하도록 번호 부여
+        name_counts = {}
+        order_with_n = []
+        for name in item_order:
+            name_counts[name] = name_counts.get(name, 0) + 1
+            order_with_n.append((name, name_counts[name]))  # ('기타',1), ('기타',2)...
+
+        index_labels = [nm for nm, _ in order_with_n]
+
+        # 3) 컬럼 라벨
+        col_prev2_label = f"{str(year - 2)[-2:]}년"   # '23년
+        col_prev1_label = f"{str(year - 1)[-2:]}년"   # '24년
+        col_currsum_label = "당월누적"                # 선택년도 당월누적
+
+        # 4) 선택연도에 데이터 있는지 체크 (월은 구분자라서 신경 안 씀)
+        sel_year = df0[
+            (df0["연도"] == year)
+            & (df0["구분2"].isin(item_order))
+        ]
+
+        used_m = month  # 헤더에 표시할 선택월 텍스트용
+
+        if sel_year.empty:
+            base = pd.DataFrame(
+                {
+                    col_prev2_label:   [np.nan] * len(index_labels),
+                    col_prev1_label:   [np.nan] * len(index_labels),
+                    "전월누적":         [np.nan] * len(index_labels),
+                    "당월":             [np.nan] * len(index_labels),
+                    col_currsum_label: [np.nan] * len(index_labels),
+                },
+                index=pd.Index(index_labels, name="구분"),
+                dtype=float
+            )
+
+        else:
+            # -------------------------------
+            # 5) 집계 함수들
+            # -------------------------------
+
+            # (1) 전전년도/전년도: 해당 연도 전체 합계
+            #     2023, 2024는 구분2별 1건씩이라는 가정 ⇒ nth 사용
+            def _sum_item_year(name: str, nth: int, y: int) -> float:
+                sub = df0[
+                    (df0["연도"] == y)
+                    & (df0["구분2"] == name)
+                ].sort_values("__ord__", kind="stable")
+                if len(sub) >= nth:
+                    return float(sub.iloc[nth - 1]["실적"])
+                return 0.0
+
+            def _block_year(y: int):
+                return [_sum_item_year(nm, nth, y) for (nm, nth) in order_with_n]
+
+            # (2) 선택연도: 월 컬럼의 문자열(전월누적/당월/당월누적)을 그대로 사용
+            def _sum_item_kind(name: str, nth: int, y: int, kind: str) -> float:
+                sub = df0[
+                    (df0["연도"] == y)
+                    & (df0["월"] == kind)
+                    & (df0["구분2"] == name)
+                ].sort_values("__ord__", kind="stable")
+                if len(sub) >= nth:
+                    return float(sub.iloc[nth - 1]["실적"])
+                return 0.0
+
+            def _block_kind(y: int, kind: str):
+                return [_sum_item_kind(nm, nth, y, kind) for (nm, nth) in order_with_n]
+
+            # -------------------------------
+            # 6) 컬럼별 값 계산
+            # -------------------------------
+            vals_prev2 = _block_year(year - 2)   # 예: 2023
+            vals_prev1 = _block_year(year - 1)   # 예: 2024
+
+            # 선택년도(예: 2025): 월 컬럼 값이 '전월누적' / '당월' / '당월누적' 인 것 사용
+            vals_prev = _block_kind(year, "전월누적")
+            vals_curr = _block_kind(year, "당월")
+            vals_ytd  = _block_kind(year, "당월누적")
+
+            base = pd.DataFrame(
+                {
+                    col_prev2_label:   vals_prev2,
+                    col_prev1_label:   vals_prev1,
+                    "전월누적":         vals_prev,
+                    "당월":             vals_curr,
+                    col_currsum_label: vals_ytd,
+                },
+                index=pd.Index(index_labels, name="구분"),
+                dtype=float
+            )
+
+            # -------------------------------
+            # 6-1) 파생 항목 강제 재계산
+            # -------------------------------
+            def _row(label: str) -> pd.Series:
+                """해당 라벨이 없으면 0으로 채운 Series 반환(안전장치)"""
+                if label in base.index:
+                    return base.loc[label]
+                else:
+                    return pd.Series(0.0, index=base.columns, dtype=float)
+
+            # 조정 = 감가상각비 + 기타
+            base.loc["조정"] = _row("감가상각비") + _row("기타")
+
+            # 자산부채증감 =
+            #   매출채권 감소(증가) + 기타채권 감소(증가) + 기타자산 감소(증가)
+            #   + 재고자산 감소(증가) + 매입채무 증가(감소)
+            #   + 기타채무 증가(감소) + 퇴직급여부채증가(감소)
+            base.loc["자산부채증감"] = (
+                _row("매출채권 감소(증가)")
+                + _row("기타채권 감소(증가)")
+                + _row("기타자산 감소(증가)")
+                + _row("재고자산 감소(증가)")
+                + _row("매입채무 증가(감소)")
+                + _row("기타채무 증가(감소)")
+                + _row("퇴직급여부채증가(감소)")
+            )
+
+            # 영업활동현금흐름 =
+            #   당기순이익 + 조정 + 자산부채증감
+            #   + 법인세납부 + 이자의 수취 + 이자의 지급
+            base.loc["영업활동현금흐름"] = (
+                _row("당기순이익")
+                + base.loc["조정"]
+                + base.loc["자산부채증감"]
+                + _row("법인세납부")
+                + _row("이자의 수취")
+                + _row("이자의 지급")
+            )
+
+            # 투자활동현금흐름 = 유형자산취득 + 무형자산취득 + 기타 투자활동
+            base.loc["투자활동현금흐름"] = (
+                _row("유형자산취득")
+                + _row("무형자산취득")
+                + _row("기타 투자활동")
+            )
+
+            # 재무활동현금흐름 = 차입금의 증가(감소)
+            base.loc["재무활동현금흐름"] = _row("차입금의 증가(감소)")
+
+            # 현금성자산의 증감 =
+            #   영업활동현금흐름 + 투자활동현금흐름 + 재무활동현금흐름
+            base.loc["현금성자산의 증감"] = (
+                base.loc["영업활동현금흐름"]
+                + base.loc["투자활동현금흐름"]
+                + base.loc["재무활동현금흐름"]
+            )
+
+        # 7) 표시 포맷(괄호표기)
+        def fmt_cell(x):
+            if pd.isna(x):
+                return ""
+            try:
+                v = float(x)
+            except Exception:
+                return x
+            return f"({abs(int(round(v))):,})" if v < 0 else f"{int(round(v)):,}"
+
+        disp = base.copy()
+        for c in disp.columns:
+            disp[c] = disp[c].apply(fmt_cell)
+
+        # 8) 스페이서 + 2단 헤더
+        disp = disp.reset_index()
+        SPACER = "__spacer__"
+        disp.insert(0, SPACER, "")
+
+        cols = disp.columns.tolist()
+        c_idx = {c: i for i, c in enumerate(cols)}
+        yy = str(year)[-2:]
+        top_label = f"'{yy} {used_m}월"   # 필요하면 상단 타이틀 등에 사용
+
+        hdr1 = [''] * len(cols)
+        hdr2 = [''] * len(cols)
+
+        # 1행 헤더
+        hdr1[c_idx['구분']]             = '구분'
+        hdr1[c_idx[col_prev2_label]]   = col_prev2_label
+        hdr1[c_idx[col_prev1_label]]   = col_prev1_label
+        hdr1[c_idx[col_currsum_label]] = col_currsum_label   # 당월누적
+
+        # 2행 헤더 (선택년도 부분)
+        hdr2[c_idx['전월누적']]         = '전월누적'
+        hdr2[c_idx['당월']]             = '당월'
+
+        hdr_df = pd.DataFrame([hdr1, hdr2], columns=cols)
+        disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
+
+
+
+
+        # 9) 스타일 – 네가 쓰던 거 그대로
+        styles = [
+            {'selector': 'thead', 'props': [('display','none')]},
+            {'selector': 'tbody tr:nth-child(1) td', 'props': [('text-align','center'), ('padding','8px 8px'), ('font-weight','600')]},
+            {'selector': 'tbody tr:nth-child(2) td', 'props': [('text-align','center'), ('padding','10px 8px'), ('font-weight','600')]},
+            {'selector': 'tbody td:nth-child(1)', 'props': [('width','8px'), ('border-right','0')]},
+            {'selector': 'tbody tr:nth-child(n+3) td', 'props': [('text-align','right'), ('padding','8px 10px')]},
+            {'selector': 'tbody tr:nth-child(n+3) td:nth-child(2)', 'props': [('text-align','left')]},
+            {'selector': 'tbody tr:nth-child(3) td', 'props': [('border-top','3px solid gray')]},
+            {'selector': 'tbody tr:nth-child(1) td', 'props': [('border-top','3px solid gray')]},
+            {'selector': 'td:nth-child(2)', 'props': [('border-right','3px solid gray')]},
+        ]
+
+        # 구분 너비 확장
+        styles.append({
+            'selector': 'tbody td:nth-child(2)',
+            'props': [
+                ('min-width','220px !important'),
+                ('width','220px !important'),
+                ('white-space','nowrap')
+            ]
+        })
+
+        # spacer_rules1 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #         'props': [('text-align','right')]
+        #     }
+        #     for r in (6,7,9,10,11,12,13,20,21,22)
+        # ]
+        # styles += spacer_rules1    
+
+        # spacer_rules2 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #         'props': [('border-right','3px solid gray !important')]
+        #     }
+        #     for r in (4,5,6,7,8,9,10,11,12,13,14,16,17,19,20,21,22)
+        # ]
+        # styles += spacer_rules2
+
+        # spacer_rules2 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #         'props': [('border-right','2px solid white !important')]
+        #     }
+        #     for r in (1,2,3,15,18,23,24,25)
+        # ]
+        # styles += spacer_rules2
+
+        # spacer_rules2 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #         'props': [('border-bottom','3px solid gray !important')]
+        #     }
+        #     for r in (3,14,15,17,18,22,23,24)
+        # ]
+        # styles += spacer_rules2
+
+        # spacer_rules4 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #         'props': [('border-top','2px solid white !important')]
+        #     }
+        #     for r in (6,7,9,10,11,12,13,17,20,21,22)
+        # ]
+        # styles += spacer_rules4
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #         'props': [('border-bottom','2px solid white !important')]
+        #     }
+        #     for r in range(1,24)
+        # ]
+        # styles += spacer_rules5
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #         'props': [('border-bottom','3px solid gray !important')]
+        #     }
+        #     for r in (14,17,22,23,24)
+        # ]
+        # styles += spacer_rules6
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
+        #         'props': [('border-top','2px solid white !important')]
+        #     }
+        #     for r in (2,3,4,7)
+        # ]
+        # styles += spacer_rules6
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+        #         'props': [('border-right','2px solid white !important')]
+        #     }
+        #     for r in (5,6)
+        # ]
+        # styles += spacer_rules6
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(4)',
+        #         'props': [('border-right','3px solid gray !important')]
+        #     }
+        #     for r in (1,2)
+        # ]
+        # styles += spacer_rules6
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(3)',
+        #         'props': [('border-right','3px solid gray !important')]
+        #     }
+        #     for r in (1,2)
+        # ]
+        # styles += spacer_rules6
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+        #         'props': [('border-bottom','2px solid white !important')]
+        #     }
+        #     for r in (5,6)
+        # ]
+        # styles += spacer_rules6
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
+        #         'props': [('border-right','2px solid white !important')]
+        #     }
+        #     for r in (5,6)
+        # ]
+        # styles += spacer_rules6
+
+        display_styled_df(disp_vis, styles=styles, already_flat=True)
+        display_memo('f_63', year, month)
+
+    except Exception as e:
+        st.error(f"천진 현금흐름표 생성 중 오류: {e}")
+
+    st.divider()
+
+    st.markdown("<h4> 3) 현금흐름 태국법인</h4>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 톤, 백만원, %]</div>", unsafe_allow_html=True)
+
+    try:
+        file_name = st.secrets["sheets"]["f_62_63_64"]
+        raw = pd.read_csv(file_name, dtype=str)
+
+        # 1) 유틸
+        def _to_num(s: pd.Series) -> pd.Series:
+            s = (
+                s.fillna("")
+                .astype(str)
+                .str.replace(",", "", regex=False)
+                .str.strip()
+            )
+            v = pd.to_numeric(s, errors="coerce")
+            return v.fillna(0.0)
+
+        def _clean_cf_namtong(df_raw: pd.DataFrame) -> pd.DataFrame:
+            df = df_raw.copy()
+            need = {"구분1", "구분2", "연도", "월", "실적"}
+            miss = need - set(df.columns)
+            if miss:
+                raise ValueError(f"필수 컬럼 누락: {miss}")
+
+            for c in ["구분1", "구분2", "구분3", "구분4"]:
+                if c in df.columns:
+                    df[c] = (
+                        df[c]
+                        .astype(str)
+                        .str.strip()
+                        .str.replace(r"\s+", " ", regex=True)
+                    )
+
+            df["연도"] = pd.to_numeric(df["연도"], errors="coerce").astype("Int64")
+            # 월은 '전월누적', '당월', '당월누적' 같은 문자열이 있으므로 숫자로 바꾸지 않는다
+            df["월"] = df["월"].fillna("").astype(str).str.strip()
+            df["실적"] = _to_num(df["실적"])
+
+            # 태국만 사용
+            df = df[df["구분1"] == "태국"].copy()
+
+            # 원본 순서 보존 (중복 라벨의 N번째 구분용)
+            df["__ord__"] = range(len(df))
+            return df
+
+        df0 = _clean_cf_namtong(raw)
+        year = int(st.session_state["year"])
+        month = int(st.session_state["month"])
+
+        # 2) 원하는 행 순서(= 구분2 값 순서)
+        item_order = [
+            "영업활동현금흐름",
+            "당기순이익",
+            "조정",
+            "감가상각비",
+            "기타",
+            "자산부채증감",
+            "매출채권 감소(증가)",
+            "기타채권 감소(증가)",   # ★ 추가
+            "재고자산 감소(증가)",
+            "기타자산 감소(증가)",
+            "매입채무 증가(감소)",
+            "기타채무 증가(감소)",
+            "퇴직급여부채증가(감소)",
+            "법인세납부",
+            "이자의 수취",
+            "이자의 지급",
+            "투자활동현금흐름",
+            "유형자산취득",
+            "무형자산취득",
+            "기타 투자활동",
+            "재무활동현금흐름",
+            "차입금의 증가(감소)",
+            "현금성자산의 증감",
+            "기초의 현금",
+            "현금성자산의 환율변동",
+            "기말의 현금",
+        ]
+
+        # (중요) 같은 라벨의 N번째 등장만 집계하도록 번호 부여
+        name_counts = {}
+        order_with_n = []
+        for name in item_order:
+            name_counts[name] = name_counts.get(name, 0) + 1
+            order_with_n.append((name, name_counts[name]))  # ('기타',1), ('기타',2)...
+
+        index_labels = [nm for nm, _ in order_with_n]
+
+        # 3) 컬럼 라벨
+        col_prev2_label = f"{str(year - 2)[-2:]}년"   # '23년
+        col_prev1_label = f"{str(year - 1)[-2:]}년"   # '24년
+        col_currsum_label = "당월누적"                # 선택년도 당월누적
+
+        # 4) 선택연도에 데이터 있는지 체크 (월은 구분자라서 신경 안 씀)
+        sel_year = df0[
+            (df0["연도"] == year)
+            & (df0["구분2"].isin(item_order))
+        ]
+
+        used_m = month  # 헤더에 표시할 선택월 텍스트용
+
+        if sel_year.empty:
+            base = pd.DataFrame(
+                {
+                    col_prev2_label:   [np.nan] * len(index_labels),
+                    col_prev1_label:   [np.nan] * len(index_labels),
+                    "전월누적":         [np.nan] * len(index_labels),
+                    "당월":             [np.nan] * len(index_labels),
+                    col_currsum_label: [np.nan] * len(index_labels),
+                },
+                index=pd.Index(index_labels, name="구분"),
+                dtype=float
+            )
+
+        else:
+            # -------------------------------
+            # 5) 집계 함수들
+            # -------------------------------
+
+            # (1) 전전년도/전년도: 해당 연도 전체 합계
+            #     2023, 2024는 구분2별 1건씩이라는 가정 ⇒ nth 사용
+            def _sum_item_year(name: str, nth: int, y: int) -> float:
+                sub = df0[
+                    (df0["연도"] == y)
+                    & (df0["구분2"] == name)
+                ].sort_values("__ord__", kind="stable")
+                if len(sub) >= nth:
+                    return float(sub.iloc[nth - 1]["실적"])
+                return 0.0
+
+            def _block_year(y: int):
+                return [_sum_item_year(nm, nth, y) for (nm, nth) in order_with_n]
+
+            # (2) 선택연도: 월 컬럼의 문자열(전월누적/당월/당월누적)을 그대로 사용
+            def _sum_item_kind(name: str, nth: int, y: int, kind: str) -> float:
+                sub = df0[
+                    (df0["연도"] == y)
+                    & (df0["월"] == kind)
+                    & (df0["구분2"] == name)
+                ].sort_values("__ord__", kind="stable")
+                if len(sub) >= nth:
+                    return float(sub.iloc[nth - 1]["실적"])
+                return 0.0
+
+            def _block_kind(y: int, kind: str):
+                return [_sum_item_kind(nm, nth, y, kind) for (nm, nth) in order_with_n]
+
+            # -------------------------------
+            # 6) 컬럼별 값 계산
+            # -------------------------------
+            vals_prev2 = _block_year(year - 2)   # 예: 2023
+            vals_prev1 = _block_year(year - 1)   # 예: 2024
+
+            # 선택년도(예: 2025): 월 컬럼 값이 '전월누적' / '당월' / '당월누적' 인 것 사용
+            vals_prev = _block_kind(year, "전월누적")
+            vals_curr = _block_kind(year, "당월")
+            vals_ytd  = _block_kind(year, "당월누적")
+
+            base = pd.DataFrame(
+                {
+                    col_prev2_label:   vals_prev2,
+                    col_prev1_label:   vals_prev1,
+                    "전월누적":         vals_prev,
+                    "당월":             vals_curr,
+                    col_currsum_label: vals_ytd,
+                },
+                index=pd.Index(index_labels, name="구분"),
+                dtype=float
+            )
+
+            # -------------------------------
+            # 6-1) 파생 항목 강제 재계산
+            # -------------------------------
+            def _row(label: str) -> pd.Series:
+                """해당 라벨이 없으면 0으로 채운 Series 반환(안전장치)"""
+                if label in base.index:
+                    return base.loc[label]
+                else:
+                    return pd.Series(0.0, index=base.columns, dtype=float)
+
+            # 조정 = 감가상각비 + 기타
+            base.loc["조정"] = _row("감가상각비") + _row("기타")
+
+            # 자산부채증감 =
+            #   매출채권 감소(증가) + 기타채권 감소(증가) + 기타자산 감소(증가)
+            #   + 재고자산 감소(증가) + 매입채무 증가(감소)
+            #   + 기타채무 증가(감소) + 퇴직급여부채증가(감소)
+            base.loc["자산부채증감"] = (
+                _row("매출채권 감소(증가)")
+                + _row("기타채권 감소(증가)")
+                + _row("기타자산 감소(증가)")
+                + _row("재고자산 감소(증가)")
+                + _row("매입채무 증가(감소)")
+                + _row("기타채무 증가(감소)")
+                + _row("퇴직급여부채증가(감소)")
+            )
+
+            # 영업활동현금흐름 =
+            #   당기순이익 + 조정 + 자산부채증감
+            #   + 법인세납부 + 이자의 수취 + 이자의 지급
+            base.loc["영업활동현금흐름"] = (
+                _row("당기순이익")
+                + base.loc["조정"]
+                + base.loc["자산부채증감"]
+                + _row("법인세납부")
+                + _row("이자의 수취")
+                + _row("이자의 지급")
+            )
+
+            # 투자활동현금흐름 = 유형자산취득 + 무형자산취득 + 기타 투자활동
+            base.loc["투자활동현금흐름"] = (
+                _row("유형자산취득")
+                + _row("무형자산취득")
+                + _row("기타 투자활동")
+            )
+
+            # 재무활동현금흐름 = 차입금의 증가(감소)
+            base.loc["재무활동현금흐름"] = _row("차입금의 증가(감소)")
+
+            # 현금성자산의 증감 =
+            #   영업활동현금흐름 + 투자활동현금흐름 + 재무활동현금흐름
+            base.loc["현금성자산의 증감"] = (
+                base.loc["영업활동현금흐름"]
+                + base.loc["투자활동현금흐름"]
+                + base.loc["재무활동현금흐름"]
+            )
+
+        # 7) 표시 포맷(괄호표기)
+        def fmt_cell(x):
+            if pd.isna(x):
+                return ""
+            try:
+                v = float(x)
+            except Exception:
+                return x
+            return f"({abs(int(round(v))):,})" if v < 0 else f"{int(round(v)):,}"
+
+        disp = base.copy()
+        for c in disp.columns:
+            disp[c] = disp[c].apply(fmt_cell)
+
+        # 8) 스페이서 + 2단 헤더
+        disp = disp.reset_index()
+        SPACER = "__spacer__"
+        disp.insert(0, SPACER, "")
+
+        cols = disp.columns.tolist()
+        c_idx = {c: i for i, c in enumerate(cols)}
+        yy = str(year)[-2:]
+        top_label = f"'{yy} {used_m}월"   # 필요하면 상단 타이틀 등에 사용
+
+        hdr1 = [''] * len(cols)
+        hdr2 = [''] * len(cols)
+
+        # 1행 헤더
+        hdr1[c_idx['구분']]             = '구분'
+        hdr1[c_idx[col_prev2_label]]   = col_prev2_label
+        hdr1[c_idx[col_prev1_label]]   = col_prev1_label
+        hdr1[c_idx[col_currsum_label]] = col_currsum_label   # 당월누적
+
+        # 2행 헤더 (선택년도 부분)
+        hdr2[c_idx['전월누적']]         = '전월누적'
+        hdr2[c_idx['당월']]             = '당월'
+
+        hdr_df = pd.DataFrame([hdr1, hdr2], columns=cols)
+        disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
+
+
+
+
+        # 9) 스타일 – 네가 쓰던 거 그대로
+        styles = [
+            {'selector': 'thead', 'props': [('display','none')]},
+            {'selector': 'tbody tr:nth-child(1) td', 'props': [('text-align','center'), ('padding','8px 8px'), ('font-weight','600')]},
+            {'selector': 'tbody tr:nth-child(2) td', 'props': [('text-align','center'), ('padding','10px 8px'), ('font-weight','600')]},
+            {'selector': 'tbody td:nth-child(1)', 'props': [('width','8px'), ('border-right','0')]},
+            {'selector': 'tbody tr:nth-child(n+3) td', 'props': [('text-align','right'), ('padding','8px 10px')]},
+            {'selector': 'tbody tr:nth-child(n+3) td:nth-child(2)', 'props': [('text-align','left')]},
+            {'selector': 'tbody tr:nth-child(3) td', 'props': [('border-top','3px solid gray')]},
+            {'selector': 'tbody tr:nth-child(1) td', 'props': [('border-top','3px solid gray')]},
+            {'selector': 'td:nth-child(2)', 'props': [('border-right','3px solid gray')]},
+        ]
+
+        # 구분 너비 확장
+        styles.append({
+            'selector': 'tbody td:nth-child(2)',
+            'props': [
+                ('min-width','220px !important'),
+                ('width','220px !important'),
+                ('white-space','nowrap')
+            ]
+        })
+
+        # spacer_rules1 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #         'props': [('text-align','right')]
+        #     }
+        #     for r in (6,7,9,10,11,12,13,20,21,22)
+        # ]
+        # styles += spacer_rules1    
+
+        # spacer_rules2 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #         'props': [('border-right','3px solid gray !important')]
+        #     }
+        #     for r in (4,5,6,7,8,9,10,11,12,13,14,16,17,19,20,21,22)
+        # ]
+        # styles += spacer_rules2
+
+        # spacer_rules2 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #         'props': [('border-right','2px solid white !important')]
+        #     }
+        #     for r in (1,2,3,15,18,23,24,25)
+        # ]
+        # styles += spacer_rules2
+
+        # spacer_rules2 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #         'props': [('border-bottom','3px solid gray !important')]
+        #     }
+        #     for r in (3,14,15,17,18,22,23,24)
+        # ]
+        # styles += spacer_rules2
+
+        # spacer_rules4 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #         'props': [('border-top','2px solid white !important')]
+        #     }
+        #     for r in (6,7,9,10,11,12,13,17,20,21,22)
+        # ]
+        # styles += spacer_rules4
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #         'props': [('border-bottom','2px solid white !important')]
+        #     }
+        #     for r in range(1,24)
+        # ]
+        # styles += spacer_rules5
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #         'props': [('border-bottom','3px solid gray !important')]
+        #     }
+        #     for r in (14,17,22,23,24)
+        # ]
+        # styles += spacer_rules6
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
+        #         'props': [('border-top','2px solid white !important')]
+        #     }
+        #     for r in (2,3,4,7)
+        # ]
+        # styles += spacer_rules6
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+        #         'props': [('border-right','2px solid white !important')]
+        #     }
+        #     for r in (5,6)
+        # ]
+        # styles += spacer_rules6
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(4)',
+        #         'props': [('border-right','3px solid gray !important')]
+        #     }
+        #     for r in (1,2)
+        # ]
+        # styles += spacer_rules6
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(3)',
+        #         'props': [('border-right','3px solid gray !important')]
+        #     }
+        #     for r in (1,2)
+        # ]
+        # styles += spacer_rules6
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+        #         'props': [('border-bottom','2px solid white !important')]
+        #     }
+        #     for r in (5,6)
+        # ]
+        # styles += spacer_rules6
+
+        # spacer_rules6 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
+        #         'props': [('border-right','2px solid white !important')]
+        #     }
+        #     for r in (5,6)
+        # ]
+        # styles += spacer_rules6
+
+        display_styled_df(disp_vis, styles=styles, already_flat=True)
+        display_memo('f_64', year, month)
+
+    except Exception as e:
+        st.error(f"태국 현금흐름표 생성 중 오류: {e}")
+
+    st.divider()
+
+
+
+with t3:
+    st.markdown("<h4> 1) 재무상태표 남통법인</h4>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 백만원]</div>", unsafe_allow_html=True)
+    # 데이터 로드
+    try:
+        file_name = st.secrets["sheets"]["f_65_66_67"]
+        raw = pd.read_csv(file_name, dtype=str)
+
+        # 모듈 갱신(수정 반영)
+        import importlib
+        importlib.invalidate_caches(); importlib.reload(modules)
+
+        item_order = [
+            '현금및현금성자산','매출채권','재고자산','유형자산','기타자산','자산총계',
+            '매입채무','차입금','기타부채','부채총계',
+            '자본금','이익잉여금','자본총계','부채 및 자본 총계'
+        ]
+
+        base_namtong = modules.create_bs_from_company(
+            year         = int(st.session_state['year']),
+            month        = int(st.session_state['month']),
+            data         = raw,
+            item_order   = item_order,
+            company_name = '남통',
+        )
+
+        # ─────────────────────────
+        # 1) 합계 행 재계산
+        # ─────────────────────────
+        calc = base_namtong.copy()
+
+        sum_map = {
+            # 자산총계 = 현금및현금성자산 + 매출채권 + 재고자산 + 유형자산 + 기타자산
+            '자산총계': ['현금및현금성자산','매출채권','재고자산','유형자산','기타자산'],
+
+            # 부채총계 = 매입채무 + 차입금 + 기타부채
+            '부채총계': ['매입채무','차입금','기타부채'],
+
+            # 자본총계 = 자본금 + 이익잉여금
+            '자본총계': ['자본금','이익잉여금'],
+
+            # 부채 및 자본 총계 = 부채총계 + 자본총계
+            '부채 및 자본 총계': ['부채총계','자본총계'],
+        }
+
+        for target, sources in sum_map.items():
+            missing = [s for s in sources if s not in calc.index]
+            if missing:
+                raise ValueError(f"합계 계산에 필요한 항목 누락: {missing}")
+            calc.loc[target] = calc.loc[sources].sum()
+
+        # attrs 그대로 유지
+        calc.attrs = base_namtong.attrs
+
+
+        def fmt_cell(x):
+            if pd.isna(x):
+                return ""
+            try:
+                v = float(x)
+            except Exception:
+                return x
+
+            if v == 0:
+                return ""
+            return f"({abs(int(round(v))):,})" if v < 0 else f"{int(round(v)):,}"
+
+        disp = calc.copy()
+        for c in disp.columns:
+            disp[c] = disp[c].apply(fmt_cell)
+
+        disp = disp.reset_index()
+        SPACER = "__spacer__"
+        disp.insert(0, SPACER, "")
+
+        # 밑은 기존에 쓰시던 헤더 3단 구성/스타일링 코드 그대로 사용하시면 됩니다.
+        # (base_namtong 대신 calc / disp 기준으로만 바꿔주면 됨)
+
+
+        cols = disp.columns.tolist()
+        c_idx = {c: i for i, c in enumerate(cols)}
+
+        gu_i   = c_idx['구분']
+        diff_i = c_idx['전월비']
+        month_i = c_idx['당월']
+
+        # ===========================
+        # 4) 연도·월 정보 가져오기
+        # ===========================
+        def _safe_int(x, default=None):
+            try:
+                return int(x)
+            except Exception:
+                return default
+
+        used_m = _safe_int(base_namtong.attrs.get('used_month'))
+        prev_m = _safe_int(base_namtong.attrs.get('prev_month'))
+
+        if used_m is None:
+            used_m = _safe_int(st.session_state.get('month'), 12)
+
+        if prev_m is None:
+            prev_m = used_m - 1 if used_m and used_m > 1 else 12
+
+        year_int = int(st.session_state['year'])
+        yy_curr  = f"{year_int % 100:02d}"
+        yy_m1    = f"{(year_int - 1) % 100:02d}"
+        yy_m2    = f"{(year_int - 2) % 100:02d}"
+        yy_m3    = f"{(year_int - 3) % 100:02d}"
+
+        # create_bs_from_company에서 만들어진 컬럼명과 매칭
+        col_yend_m3 = f"'{yy_m3}년말"
+        col_yend_m2 = f"'{yy_m2}년말"
+        col_yend_m1 = f"'{yy_m1}년말"
+        col_prev    = f"'{yy_curr} 전월"
+
+        # 인덱스 확인
+        y3_i   = c_idx[col_yend_m3]
+        y2_i   = c_idx[col_yend_m2]
+        y1_i   = c_idx[col_yend_m1]
+        prev_i = c_idx[col_prev]
+
+        # ===========================
+        # 5) 3단 헤더 구성
+        # ===========================
+        hdr1 = [''] * len(cols)
+        hdr2 = [''] * len(cols)
+        hdr3 = [''] * len(cols)
+
+        # ✅ 인덱스 컬럼/과거 연말 컬럼들은 그대로 2층에만 라벨
+        hdr2[gu_i] = '남통'
+        hdr2[y3_i] = f"'{yy_m3}년말"   # 선택 전전전년 말
+        hdr2[y2_i] = f"'{yy_m2}년말"   # 선택 전전년 말
+        hdr2[y1_i] = f"'{yy_m1}년말"   # 전년말
+
+        year_label = f"'{yy_curr}년"
+        hdr1[prev_i]  = year_label
+        hdr1[month_i] = year_label
+
+        hdr2[prev_i]  = f"{prev_m}월"   # 예: 3월
+        hdr2[month_i] = f"{used_m}월"   # 예: 4월
+
+        # 전월비 컬럼 라벨
+        hdr2[diff_i] = '전월비'
+
+        hdr_df   = pd.DataFrame([hdr1, hdr2, hdr3], columns=cols)
+        disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
+
+
+
+
+
+
+        styles = [
+            {'selector': 'thead', 'props': [('display','none')]},
+
+            # 헤더 1·2·3행
+            {'selector': 'tbody tr:nth-child(1) td', 'props': [('text-align','center'), ('padding','8px 8px'),  ('line-height','1.1'), ('font-weight','600')]},
+            {'selector': 'tbody tr:nth-child(2) td', 'props': [('text-align','center'), ('padding','10px 8px'), ('line-height','1.4'), ('font-weight','600')]},
+            {'selector': 'tbody tr:nth-child(2) td:nth-child(2)', 'props': [('text-align','center')]},
+            {'selector': 'tbody tr:nth-child(3) td', 'props': [('text-align','center'), ('padding','14px 10px'), ('line-height','1.7'), ('font-weight','600')]},
+
+            # 1열 얇게
+            {'selector': 'tbody td:nth-child(1)', 'props': [('width','8px'), ('border-right','0')]},
+
+
+            # 본문
+            {'selector': 'tbody tr:nth-child(n+4) td', 'props': [('line-height','1.45'), ('padding','8px 10px'), ('text-align','right')]},
+            {'selector': 'tbody tr:nth-child(n+4) td:nth-child(2)', 'props': [('text-align','left')]},
+        ]
+
+        # spacer_rules1 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #                 'props': [('text-align','left')]
+                    
+        #             }
+        #             for r in range(4,19)
+        #         ]
+        
+        # styles += spacer_rules1
+        
+
+        # spacer_rules2 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #                 'props': [('border-left','3px solid gray ')],
+                    
+        #             }
+        #             for r in (4,5,6,7,8,10,11,12,14,15,16)
+        #         ]
+        
+        
+        # styles  += spacer_rules2
+
+        # spacer_rules2 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #                 'props': [('border-left','2px solid white ')],
+                    
+        #             }
+        #             for r in (9,13,17,18)
+        #         ]
+        
+        
+        # styles  += spacer_rules2
+
+        # spacer_rules3 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #                 'props': [('border-top','3px solid gray ')],
+                    
+        #             }
+        #             for r in (9,10,13,14,17,18)
+        #         ]
+        
+        # styles  += spacer_rules3
+
+        # spacer_rules4 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #                 'props': [('border-bottom','2px solid white ')],
+                    
+        #             }
+        #             for r in range(4,18)
+        #         ]
+        
+        # styles  += spacer_rules4
+
+        # spacer_rules5 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #                 'props': [('border-bottom','3px solid gray ')],
+                    
+        #             }
+        #             for r in (3,9,13,17)
+        #         ]
+        
+        # styles  += spacer_rules5
+
+        # spacer_rules5 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child(3) td:nth-child(2)',
+        #                 'props': [('border-bottom','3px solid gray ')],
+                    
+        #             }
+
+        #         ]
+        
+        # styles  += spacer_rules5        
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(3)',
+        #         'props': [('border-left','3px solid gray ')]
+               
+        #     }
+
+        #     for r in range(4,19)
+        # ]
+        
+
+        # styles += spacer_rules5
+
+        # ####feature 구분####
+
+        # #행 구분
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child({j})',
+        #         'props': [('border-top','2px solid white ')]
+               
+        #     }
+        #     # for r in (4,5,8,14,15)
+        #     for r in (2,3)
+        #     for j in (1,2,3,4)
+        # ]
+
+
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child({j})',
+        #         'props': [('border-top','3px solid gray ')]
+               
+        #     }
+
+        #     for j in (5,10)
+        # ]
+
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child({j})',
+        #         'props': [('border-top','2px solid white ')]
+               
+        #     }
+
+        #     for j in (6,7,8,9)
+        # ]
+
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(1) td:nth-child({j})',
+        #         'props': [('border-top','2px solid white ')]
+               
+        #     }
+
+        #     for j in (7,8,9,10)
+        # ]
+        
+
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(3) td:nth-child({j})',
+        #         'props': [('border-top','3px solid gray ')]
+               
+        #     }
+
+        #     for j in range (6,10)
+        # ]
+
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(4) td:nth-child({j})',
+        #         'props': [('border-top','3px solid gray ')]
+               
+        #     }
+        #     # for r in (4,5,8,14,15)
+        #     # for r in (2)
+        #     for j in range(3,11)
+        # ]
+        
+
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child({j})',
+        #         'props': [('border-right','3px solid gray ')]
+               
+        #     }
+
+        #     for r in range (1,4)
+        #     for j in range (2,5)
+        # ]
+        # styles += spacer_rules5
+
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(1) td:nth-child(5)',
+        #         'props': [('border-right','3px solid gray ')]
+               
+        #     }
+
+        # ]
+        # styles += spacer_rules5
+
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(3) td:nth-child({j})',
+        #         'props': [('border-top','2px solid white ')]
+               
+        #     }
+
+        #     for j in (5,10)
+        # ]
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(1) td:nth-child(10)',
+        #         'props': [('border-right','2px solid white ')]
+               
+        #     }
+
+        # ]
+        # styles += spacer_rules5
+
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child(5)',
+        #         'props': [('border-right','3px solid gray ')],
+                
+        #     }
+
+
+
+        # ]
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(3) td:nth-child(5)',
+        #         'props': [('border-right','3px solid gray ')],
+                
+        #     }
+
+
+
+        # ]
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(3) td:nth-child(6)',
+        #         'props': [('border-top','3px solid white ')],
+                
+        #     }
+
+
+
+        # ]
+        # styles += spacer_rules5
+
+        
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child(5)',
+        #         'props': [('border-top','3px solid white ')],
+                
+        #     }
+
+
+
+        # ]
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+                
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child(10)',
+        #         'props': [('border-left','3px solid gray ')]
+               
+        #     }
+
+
+
+        # ]
+        # styles += spacer_rules5
+
+
+
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child({j})',
+        #         'props': [('border-under','2px solid white !important')],
+                
+        #     }
+
+        #     for j in range(5,6)
+
+
+
+        # ]
+        # styles += spacer_rules5
+
+        # spacer_rules10 = [
+        #     {
+                
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #         'props': [('border-right','2px solid white ')],
+
+               
+        #     }
+        #     for r in range (1,4)
+
+
+        # ]
+        # styles += spacer_rules10
+
+
+        display_styled_df(
+            disp_vis,
+            styles=styles,
+            already_flat=True
+        )
+        display_memo('f_65', this_year, current_month)
+        
+
+
+    except Exception as e:
+        st.error(f"남통 재무상태표 생성 중 오류: {e}")
+
+    st.divider()
+
+
+    st.markdown("<h4> 2) 재무상태표 천진법인</h4>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 백만원]</div>", unsafe_allow_html=True)
+    # 데이터 로드
+    try:
+        file_name = st.secrets["sheets"]["f_65_66_67"]
+        raw = pd.read_csv(file_name, dtype=str)
+
+        # 모듈 갱신(수정 반영)
+        import importlib
+        importlib.invalidate_caches(); importlib.reload(modules)
+
+        item_order = [
+            '현금및현금성자산','매출채권','재고자산','유형자산','기타자산','자산총계',
+            '매입채무','차입금','기타부채','부채총계',
+            '자본금','이익잉여금','자본총계','부채 및 자본 총계'
+        ]
+
+        base_namtong = modules.create_bs_from_company(
+            year         = int(st.session_state['year']),
+            month        = int(st.session_state['month']),
+            data         = raw,
+            item_order   = item_order,
+            company_name = '천진',
+        )
+
+        # ─────────────────────────
+        # 1) 합계 행 재계산
+        # ─────────────────────────
+        calc = base_namtong.copy()
+
+        sum_map = {
+            # 자산총계 = 현금및현금성자산 + 매출채권 + 재고자산 + 유형자산 + 기타자산
+            '자산총계': ['현금및현금성자산','매출채권','재고자산','유형자산','기타자산'],
+
+            # 부채총계 = 매입채무 + 차입금 + 기타부채
+            '부채총계': ['매입채무','차입금','기타부채'],
+
+            # 자본총계 = 자본금 + 이익잉여금
+            '자본총계': ['자본금','이익잉여금'],
+
+            # 부채 및 자본 총계 = 부채총계 + 자본총계
+            '부채 및 자본 총계': ['부채총계','자본총계'],
+        }
+
+        for target, sources in sum_map.items():
+            missing = [s for s in sources if s not in calc.index]
+            if missing:
+                raise ValueError(f"합계 계산에 필요한 항목 누락: {missing}")
+            calc.loc[target] = calc.loc[sources].sum()
+
+        # attrs 그대로 유지
+        calc.attrs = base_namtong.attrs
+
+
+        def fmt_cell(x):
+            if pd.isna(x):
+                return ""
+            try:
+                v = float(x)
+            except Exception:
+                return x
+
+            if v == 0:
+                return ""
+            return f"({abs(int(round(v))):,})" if v < 0 else f"{int(round(v)):,}"
+
+        disp = calc.copy()
+        for c in disp.columns:
+            disp[c] = disp[c].apply(fmt_cell)
+
+        disp = disp.reset_index()
+        SPACER = "__spacer__"
+        disp.insert(0, SPACER, "")
+
+        # 밑은 기존에 쓰시던 헤더 3단 구성/스타일링 코드 그대로 사용하시면 됩니다.
+        # (base_namtong 대신 calc / disp 기준으로만 바꿔주면 됨)
+
+
+        cols = disp.columns.tolist()
+        c_idx = {c: i for i, c in enumerate(cols)}
+
+        gu_i   = c_idx['구분']
+        diff_i = c_idx['전월비']
+        month_i = c_idx['당월']
+
+        # ===========================
+        # 4) 연도·월 정보 가져오기
+        # ===========================
+        def _safe_int(x, default=None):
+            try:
+                return int(x)
+            except Exception:
+                return default
+
+        used_m = _safe_int(base_namtong.attrs.get('used_month'))
+        prev_m = _safe_int(base_namtong.attrs.get('prev_month'))
+
+        if used_m is None:
+            used_m = _safe_int(st.session_state.get('month'), 12)
+
+        if prev_m is None:
+            prev_m = used_m - 1 if used_m and used_m > 1 else 12
+
+        year_int = int(st.session_state['year'])
+        yy_curr  = f"{year_int % 100:02d}"
+        yy_m1    = f"{(year_int - 1) % 100:02d}"
+        yy_m2    = f"{(year_int - 2) % 100:02d}"
+        yy_m3    = f"{(year_int - 3) % 100:02d}"
+
+        # create_bs_from_company에서 만들어진 컬럼명과 매칭
+        col_yend_m3 = f"'{yy_m3}년말"
+        col_yend_m2 = f"'{yy_m2}년말"
+        col_yend_m1 = f"'{yy_m1}년말"
+        col_prev    = f"'{yy_curr} 전월"
+
+        # 인덱스 확인
+        y3_i   = c_idx[col_yend_m3]
+        y2_i   = c_idx[col_yend_m2]
+        y1_i   = c_idx[col_yend_m1]
+        prev_i = c_idx[col_prev]
+
+        # ===========================
+        # 5) 3단 헤더 구성
+        # ===========================
+        hdr1 = [''] * len(cols)
+        hdr2 = [''] * len(cols)
+        hdr3 = [''] * len(cols)
+
+        # ✅ 인덱스 컬럼/과거 연말 컬럼들은 그대로 2층에만 라벨
+        hdr2[gu_i] = '천진'
+        hdr2[y3_i] = f"'{yy_m3}년말"   # 선택 전전전년 말
+        hdr2[y2_i] = f"'{yy_m2}년말"   # 선택 전전년 말
+        hdr2[y1_i] = f"'{yy_m1}년말"   # 전년말
+
+        year_label = f"'{yy_curr}년"
+        hdr1[prev_i]  = year_label
+        hdr1[month_i] = year_label
+
+        hdr2[prev_i]  = f"{prev_m}월"   # 예: 3월
+        hdr2[month_i] = f"{used_m}월"   # 예: 4월
+
+        # 전월비 컬럼 라벨
+        hdr2[diff_i] = '전월비'
+
+        hdr_df   = pd.DataFrame([hdr1, hdr2, hdr3], columns=cols)
+        disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
+
+
+
+
+
+
+        styles = [
+            {'selector': 'thead', 'props': [('display','none')]},
+
+            # 헤더 1·2·3행
+            {'selector': 'tbody tr:nth-child(1) td', 'props': [('text-align','center'), ('padding','8px 8px'),  ('line-height','1.1'), ('font-weight','600')]},
+            {'selector': 'tbody tr:nth-child(2) td', 'props': [('text-align','center'), ('padding','10px 8px'), ('line-height','1.4'), ('font-weight','600')]},
+            {'selector': 'tbody tr:nth-child(2) td:nth-child(2)', 'props': [('text-align','center')]},
+            {'selector': 'tbody tr:nth-child(3) td', 'props': [('text-align','center'), ('padding','14px 10px'), ('line-height','1.7'), ('font-weight','600')]},
+
+            # 1열 얇게
+            {'selector': 'tbody td:nth-child(1)', 'props': [('width','8px'), ('border-right','0')]},
+
+
+            # 본문
+            {'selector': 'tbody tr:nth-child(n+4) td', 'props': [('line-height','1.45'), ('padding','8px 10px'), ('text-align','right')]},
+            {'selector': 'tbody tr:nth-child(n+4) td:nth-child(2)', 'props': [('text-align','left')]},
+        ]
+
+        # spacer_rules1 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #                 'props': [('text-align','left')]
+                    
+        #             }
+        #             for r in range(4,19)
+        #         ]
+        
+        # styles += spacer_rules1
+        
+
+        # spacer_rules2 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #                 'props': [('border-left','3px solid gray ')],
+                    
+        #             }
+        #             for r in (4,5,6,7,8,10,11,12,14,15,16)
+        #         ]
+        
+        
+        # styles  += spacer_rules2
+
+        # spacer_rules2 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #                 'props': [('border-left','2px solid white ')],
+                    
+        #             }
+        #             for r in (9,13,17,18)
+        #         ]
+        
+        
+        # styles  += spacer_rules2
+
+        # spacer_rules3 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #                 'props': [('border-top','3px solid gray ')],
+                    
+        #             }
+        #             for r in (9,10,13,14,17,18)
+        #         ]
+        
+        # styles  += spacer_rules3
+
+        # spacer_rules4 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #                 'props': [('border-bottom','2px solid white ')],
+                    
+        #             }
+        #             for r in range(4,18)
+        #         ]
+        
+        # styles  += spacer_rules4
+
+        # spacer_rules5 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #                 'props': [('border-bottom','3px solid gray ')],
+                    
+        #             }
+        #             for r in (3,9,13,17)
+        #         ]
+        
+        # styles  += spacer_rules5
+
+        # spacer_rules5 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child(3) td:nth-child(2)',
+        #                 'props': [('border-bottom','3px solid gray ')],
+                    
+        #             }
+
+        #         ]
+        
+        # styles  += spacer_rules5        
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(3)',
+        #         'props': [('border-left','3px solid gray ')]
+               
+        #     }
+
+        #     for r in range(4,19)
+        # ]
+        
+
+        # styles += spacer_rules5
+
+        # ####feature 구분####
+
+        # #행 구분
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child({j})',
+        #         'props': [('border-top','2px solid white ')]
+               
+        #     }
+        #     # for r in (4,5,8,14,15)
+        #     for r in (2,3)
+        #     for j in (1,2,3,4)
+        # ]
+
+
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child({j})',
+        #         'props': [('border-top','3px solid gray ')]
+               
+        #     }
+
+        #     for j in (5,10)
+        # ]
+
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child({j})',
+        #         'props': [('border-top','2px solid white ')]
+               
+        #     }
+
+        #     for j in (6,7,8,9)
+        # ]
+
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(1) td:nth-child({j})',
+        #         'props': [('border-top','2px solid white ')]
+               
+        #     }
+
+        #     for j in (7,8,9,10)
+        # ]
+        
+
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(3) td:nth-child({j})',
+        #         'props': [('border-top','3px solid gray ')]
+               
+        #     }
+
+        #     for j in range (6,10)
+        # ]
+
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(4) td:nth-child({j})',
+        #         'props': [('border-top','3px solid gray ')]
+               
+        #     }
+        #     # for r in (4,5,8,14,15)
+        #     # for r in (2)
+        #     for j in range(3,11)
+        # ]
+        
+
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child({j})',
+        #         'props': [('border-right','3px solid gray ')]
+               
+        #     }
+
+        #     for r in range (1,4)
+        #     for j in range (2,5)
+        # ]
+        # styles += spacer_rules5
+
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(1) td:nth-child(5)',
+        #         'props': [('border-right','3px solid gray ')]
+               
+        #     }
+
+        # ]
+        # styles += spacer_rules5
+
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(3) td:nth-child({j})',
+        #         'props': [('border-top','2px solid white ')]
+               
+        #     }
+
+        #     for j in (5,10)
+        # ]
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(1) td:nth-child(10)',
+        #         'props': [('border-right','2px solid white ')]
+               
+        #     }
+
+        # ]
+        # styles += spacer_rules5
+
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child(5)',
+        #         'props': [('border-right','3px solid gray ')],
+                
+        #     }
+
+
+
+        # ]
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(3) td:nth-child(5)',
+        #         'props': [('border-right','3px solid gray ')],
+                
+        #     }
+
+
+
+        # ]
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(3) td:nth-child(6)',
+        #         'props': [('border-top','3px solid white ')],
+                
+        #     }
+
+
+
+        # ]
+        # styles += spacer_rules5
+
+        
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child(5)',
+        #         'props': [('border-top','3px solid white ')],
+                
+        #     }
+
+
+
+        # ]
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+                
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child(10)',
+        #         'props': [('border-left','3px solid gray ')]
+               
+        #     }
+
+
+
+        # ]
+        # styles += spacer_rules5
+
+
+
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child({j})',
+        #         'props': [('border-under','2px solid white !important')],
+                
+        #     }
+
+        #     for j in range(5,6)
+
+
+
+        # ]
+        # styles += spacer_rules5
+
+        # spacer_rules10 = [
+        #     {
+                
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #         'props': [('border-right','2px solid white ')],
+
+               
+        #     }
+        #     for r in range (1,4)
+
+
+        # ]
+        # styles += spacer_rules10
+
+
+        display_styled_df(
+            disp_vis,
+            styles=styles,
+            already_flat=True
+        )
+
+        display_memo('f_66', this_year, current_month)
+        
+
+
+
+    except Exception as e:
+        st.error(f"천진 재무상태표 생성 중 오류: {e}")
+
+    st.divider()
+
+    st.markdown("<h4> 3) 재무상태표 태국법인</h4>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 백만원]</div>", unsafe_allow_html=True)
+    # 데이터 로드
+    try:
+        file_name = st.secrets["sheets"]["f_65_66_67"]
+        raw = pd.read_csv(file_name, dtype=str)
+
+        # 모듈 갱신(수정 반영)
+        import importlib
+        importlib.invalidate_caches(); importlib.reload(modules)
+
+        item_order = [
+            '현금및현금성자산','매출채권','재고자산','유형자산','기타자산','자산총계',
+            '매입채무','차입금','기타부채','부채총계',
+            '자본금','이익잉여금','자본총계','부채 및 자본 총계'
+        ]
+
+        base_namtong = modules.create_bs_from_company(
+            year         = int(st.session_state['year']),
+            month        = int(st.session_state['month']),
+            data         = raw,
+            item_order   = item_order,
+            company_name = '태국',
+        )
+
+        # ─────────────────────────
+        # 1) 합계 행 재계산
+        # ─────────────────────────
+        calc = base_namtong.copy()
+
+        sum_map = {
+            # 자산총계 = 현금및현금성자산 + 매출채권 + 재고자산 + 유형자산 + 기타자산
+            '자산총계': ['현금및현금성자산','매출채권','재고자산','유형자산','기타자산'],
+
+            # 부채총계 = 매입채무 + 차입금 + 기타부채
+            '부채총계': ['매입채무','차입금','기타부채'],
+
+            # 자본총계 = 자본금 + 이익잉여금
+            '자본총계': ['자본금','이익잉여금'],
+
+            # 부채 및 자본 총계 = 부채총계 + 자본총계
+            '부채 및 자본 총계': ['부채총계','자본총계'],
+        }
+
+        for target, sources in sum_map.items():
+            missing = [s for s in sources if s not in calc.index]
+            if missing:
+                raise ValueError(f"합계 계산에 필요한 항목 누락: {missing}")
+            calc.loc[target] = calc.loc[sources].sum()
+
+        # attrs 그대로 유지
+        calc.attrs = base_namtong.attrs
+
+
+        def fmt_cell(x):
+            if pd.isna(x):
+                return ""
+            try:
+                v = float(x)
+            except Exception:
+                return x
+
+            if v == 0:
+                return ""
+            return f"({abs(int(round(v))):,})" if v < 0 else f"{int(round(v)):,}"
+
+        disp = calc.copy()
+        for c in disp.columns:
+            disp[c] = disp[c].apply(fmt_cell)
+
+        disp = disp.reset_index()
+        SPACER = "__spacer__"
+        disp.insert(0, SPACER, "")
+
+        # 밑은 기존에 쓰시던 헤더 3단 구성/스타일링 코드 그대로 사용하시면 됩니다.
+        # (base_namtong 대신 calc / disp 기준으로만 바꿔주면 됨)
+
+
+        cols = disp.columns.tolist()
+        c_idx = {c: i for i, c in enumerate(cols)}
+
+        gu_i   = c_idx['구분']
+        diff_i = c_idx['전월비']
+        month_i = c_idx['당월']
+
+        # ===========================
+        # 4) 연도·월 정보 가져오기
+        # ===========================
+        def _safe_int(x, default=None):
+            try:
+                return int(x)
+            except Exception:
+                return default
+
+        used_m = _safe_int(base_namtong.attrs.get('used_month'))
+        prev_m = _safe_int(base_namtong.attrs.get('prev_month'))
+
+        if used_m is None:
+            used_m = _safe_int(st.session_state.get('month'), 12)
+
+        if prev_m is None:
+            prev_m = used_m - 1 if used_m and used_m > 1 else 12
+
+        year_int = int(st.session_state['year'])
+        yy_curr  = f"{year_int % 100:02d}"
+        yy_m1    = f"{(year_int - 1) % 100:02d}"
+        yy_m2    = f"{(year_int - 2) % 100:02d}"
+        yy_m3    = f"{(year_int - 3) % 100:02d}"
+
+        # create_bs_from_company에서 만들어진 컬럼명과 매칭
+        col_yend_m3 = f"'{yy_m3}년말"
+        col_yend_m2 = f"'{yy_m2}년말"
+        col_yend_m1 = f"'{yy_m1}년말"
+        col_prev    = f"'{yy_curr} 전월"
+
+        # 인덱스 확인
+        y3_i   = c_idx[col_yend_m3]
+        y2_i   = c_idx[col_yend_m2]
+        y1_i   = c_idx[col_yend_m1]
+        prev_i = c_idx[col_prev]
+
+        # ===========================
+        # 5) 3단 헤더 구성
+        # ===========================
+        hdr1 = [''] * len(cols)
+        hdr2 = [''] * len(cols)
+        hdr3 = [''] * len(cols)
+
+        # ✅ 인덱스 컬럼/과거 연말 컬럼들은 그대로 2층에만 라벨
+        hdr2[gu_i] = '태국'
+        hdr2[y3_i] = f"'{yy_m3}년말"   # 선택 전전전년 말
+        hdr2[y2_i] = f"'{yy_m2}년말"   # 선택 전전년 말
+        hdr2[y1_i] = f"'{yy_m1}년말"   # 전년말
+
+        year_label = f"'{yy_curr}년"
+        hdr1[prev_i]  = year_label
+        hdr1[month_i] = year_label
+
+        hdr2[prev_i]  = f"{prev_m}월"   # 예: 3월
+        hdr2[month_i] = f"{used_m}월"   # 예: 4월
+
+        # 전월비 컬럼 라벨
+        hdr2[diff_i] = '전월비'
+
+        hdr_df   = pd.DataFrame([hdr1, hdr2, hdr3], columns=cols)
+        disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
+
+
+
+
+
+
+        styles = [
+            {'selector': 'thead', 'props': [('display','none')]},
+
+            # 헤더 1·2·3행
+            {'selector': 'tbody tr:nth-child(1) td', 'props': [('text-align','center'), ('padding','8px 8px'),  ('line-height','1.1'), ('font-weight','600')]},
+            {'selector': 'tbody tr:nth-child(2) td', 'props': [('text-align','center'), ('padding','10px 8px'), ('line-height','1.4'), ('font-weight','600')]},
+            {'selector': 'tbody tr:nth-child(2) td:nth-child(2)', 'props': [('text-align','center')]},
+            {'selector': 'tbody tr:nth-child(3) td', 'props': [('text-align','center'), ('padding','14px 10px'), ('line-height','1.7'), ('font-weight','600')]},
+
+            # 1열 얇게
+            {'selector': 'tbody td:nth-child(1)', 'props': [('width','8px'), ('border-right','0')]},
+
+
+            # 본문
+            {'selector': 'tbody tr:nth-child(n+4) td', 'props': [('line-height','1.45'), ('padding','8px 10px'), ('text-align','right')]},
+            {'selector': 'tbody tr:nth-child(n+4) td:nth-child(2)', 'props': [('text-align','left')]},
+        ]
+
+        # spacer_rules1 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #                 'props': [('text-align','left')]
+                    
+        #             }
+        #             for r in range(4,19)
+        #         ]
+        
+        # styles += spacer_rules1
+        
+
+        # spacer_rules2 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #                 'props': [('border-left','3px solid gray ')],
+                    
+        #             }
+        #             for r in (4,5,6,7,8,10,11,12,14,15,16)
+        #         ]
+        
+        
+        # styles  += spacer_rules2
+
+        # spacer_rules2 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #                 'props': [('border-left','2px solid white ')],
+                    
+        #             }
+        #             for r in (9,13,17,18)
+        #         ]
+        
+        
+        # styles  += spacer_rules2
+
+        # spacer_rules3 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+        #                 'props': [('border-top','3px solid gray ')],
+                    
+        #             }
+        #             for r in (9,10,13,14,17,18)
+        #         ]
+        
+        # styles  += spacer_rules3
+
+        # spacer_rules4 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #                 'props': [('border-bottom','2px solid white ')],
+                    
+        #             }
+        #             for r in range(4,18)
+        #         ]
+        
+        # styles  += spacer_rules4
+
+        # spacer_rules5 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #                 'props': [('border-bottom','3px solid gray ')],
+                    
+        #             }
+        #             for r in (3,9,13,17)
+        #         ]
+        
+        # styles  += spacer_rules5
+
+        # spacer_rules5 = [
+        #             {
+        #                 'selector': f'tbody tr:nth-child(3) td:nth-child(2)',
+        #                 'props': [('border-bottom','3px solid gray ')],
+                    
+        #             }
+
+        #         ]
+        
+        # styles  += spacer_rules5        
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(3)',
+        #         'props': [('border-left','3px solid gray ')]
+               
+        #     }
+
+        #     for r in range(4,19)
+        # ]
+        
+
+        # styles += spacer_rules5
+
+        # ####feature 구분####
+
+        # #행 구분
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child({j})',
+        #         'props': [('border-top','2px solid white ')]
+               
+        #     }
+        #     # for r in (4,5,8,14,15)
+        #     for r in (2,3)
+        #     for j in (1,2,3,4)
+        # ]
+
+
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child({j})',
+        #         'props': [('border-top','3px solid gray ')]
+               
+        #     }
+
+        #     for j in (5,10)
+        # ]
+
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child({j})',
+        #         'props': [('border-top','2px solid white ')]
+               
+        #     }
+
+        #     for j in (6,7,8,9)
+        # ]
+
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(1) td:nth-child({j})',
+        #         'props': [('border-top','2px solid white ')]
+               
+        #     }
+
+        #     for j in (7,8,9,10)
+        # ]
+        
+
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(3) td:nth-child({j})',
+        #         'props': [('border-top','3px solid gray ')]
+               
+        #     }
+
+        #     for j in range (6,10)
+        # ]
+
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(4) td:nth-child({j})',
+        #         'props': [('border-top','3px solid gray ')]
+               
+        #     }
+        #     # for r in (4,5,8,14,15)
+        #     # for r in (2)
+        #     for j in range(3,11)
+        # ]
+        
+
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child({j})',
+        #         'props': [('border-right','3px solid gray ')]
+               
+        #     }
+
+        #     for r in range (1,4)
+        #     for j in range (2,5)
+        # ]
+        # styles += spacer_rules5
+
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(1) td:nth-child(5)',
+        #         'props': [('border-right','3px solid gray ')]
+               
+        #     }
+
+        # ]
+        # styles += spacer_rules5
+
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(3) td:nth-child({j})',
+        #         'props': [('border-top','2px solid white ')]
+               
+        #     }
+
+        #     for j in (5,10)
+        # ]
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(1) td:nth-child(10)',
+        #         'props': [('border-right','2px solid white ')]
+               
+        #     }
+
+        # ]
+        # styles += spacer_rules5
+
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child(5)',
+        #         'props': [('border-right','3px solid gray ')],
+                
+        #     }
+
+
+
+        # ]
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(3) td:nth-child(5)',
+        #         'props': [('border-right','3px solid gray ')],
+                
+        #     }
+
+
+
+        # ]
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(3) td:nth-child(6)',
+        #         'props': [('border-top','3px solid white ')],
+                
+        #     }
+
+
+
+        # ]
+        # styles += spacer_rules5
+
+        
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child(5)',
+        #         'props': [('border-top','3px solid white ')],
+                
+        #     }
+
+
+
+        # ]
+        # styles += spacer_rules5
+
+        # spacer_rules5 = [
+        #     {
+                
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child(10)',
+        #         'props': [('border-left','3px solid gray ')]
+               
+        #     }
+
+
+
+        # ]
+        # styles += spacer_rules5
+
+
+
+
+        # spacer_rules5 = [
+        #     {
+        #         'selector': f'tbody tr:nth-child(2) td:nth-child({j})',
+        #         'props': [('border-under','2px solid white !important')],
+                
+        #     }
+
+        #     for j in range(5,6)
+
+
+
+        # ]
+        # styles += spacer_rules5
+
+        # spacer_rules10 = [
+        #     {
+                
+        #         'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+        #         'props': [('border-right','2px solid white ')],
+
+               
+        #     }
+        #     for r in range (1,4)
+
+
+        # ]
+        # styles += spacer_rules10
+
+
+        display_styled_df(
+            disp_vis,
+            styles=styles,
+            already_flat=True
+        )
+
+        display_memo('f_67', this_year, current_month)
+        
+
+
+
+    except Exception as e:
+        st.error(f"남통 재무상태표 생성 중 오류: {e}")
+
+    st.divider()
+
+with t4:
+
+    st.markdown("<h4> 1) 등급별 판매현황</h4>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 톤]</div>", unsafe_allow_html=True)
+
+    try:
+        file_name = st.secrets["sheets"]["f_68"]
+        df_src = pd.read_csv(file_name, dtype=str)
+
+        # 선택한 year, month 기준으로 테이블 생성
+        disp = modules.build_grade_sales_table_68(df_src, year, month)
+        body = disp.copy()
+
+        yy = str(year)[-2:]   # 2025 -> '25'
+
+        # 직전 3개 연도
+        prev_years = [f"{str(y)[-2:]}년" for y in range(year - 3, year)]
+
+        # 선택연도 기준 최근 3개월 (선택월 포함)
+        month_cols = []
+        for m in range(month - 2, month + 1):
+            if m >= 1:
+                month_cols.append(f"{yy}년{m}월")
+
+        candidate_cols = prev_years + month_cols
+        NUM_COLS = [c for c in candidate_cols if c in body.columns]
+
+        # 전월비 계열 
+        diff_cols = [c for c in body.columns if "전월비" in c and "%" not in c]
+        pct_cols  = [c for c in body.columns if c.endswith("전월비%")]
+
+
+        # =========================
+        # 2) 가짜 헤더 hdr1, hdr2 구성
+        # =========================
+        hdr1 = {col: "" for col in body.columns}
+        hdr2 = {col: "" for col in body.columns}
+
+        # (1) 구분 컬럼 텍스트
+        if "구분2" in hdr1:
+            hdr1["구분2"] = "구분"
+
+        # (2) 직전 3개 연도: 1행에만 표시
+        for y_col in prev_years:
+            if y_col in hdr1:
+                hdr1[y_col] = f"'{y_col}" 
+
+
+        month_group = [c for c in month_cols if c in body.columns]
+
+        first = True
+        for c in month_group:
+            # 1행: 첫 컬럼에만 '25년, 나머지는 공백
+            if first:
+                hdr1[c] = f"'{yy}년"
+                first = False
+            else:
+                hdr1[c] = ""
+
+            hdr2[c] = c.split("년")[1]   
+        ym_group = []
+        ym_group += [c for c in diff_cols if c in body.columns]
+        ym_group += [c for c in pct_cols  if c in body.columns]
+
+        first = True
+        for c in ym_group:
+
+            if first:
+                hdr1[c] = f"'{yy}.{month}월"   # 예: '25.8월
+                first = False
+            else:
+                hdr1[c] = ""
+
+
+            if c in diff_cols:
+                hdr2[c] = "전월比"
+            else:   # pct 컬럼
+                hdr2[c] = "%"
+
+        # body 맨 위에 hdr1, hdr2 추가
+        hdr_df = pd.DataFrame([hdr1, hdr2])
+        body = pd.concat([hdr_df, body], ignore_index=True)
+
+        def fmt_num(v):
+            try:
+                v = float(v)
+            except:
+                return ""
+            return f"{v:,.0f}"
+
+        def fmt_diff(v):
+            try:
+                v = float(v)
+            except:
+                return ""
+            if v < 0:
+                return f'<span style="color:#d62728;">({abs(v):,.0f})</span>'
+            return f"{v:,.0f}"
+
+        def fmt_pct(v):
+            try:
+                v = float(v)
+            except:
+                return ""
+            return f"{v:.1f}%"
+
+        # 0,1행은 가짜 헤더 → 제외
+        data_rows = body.index >= 2
+
+        # disp 기준 % 행 (행 단위 %)
+        pct_rows_disp = disp["구분2"] == "%"
+        pct_rows_body = (body["구분2"] == "%") & data_rows
+
+        # (1) 일반 숫자행: 콤마 포맷
+        for c in NUM_COLS:
+            body.loc[data_rows & ~pct_rows_body, c] = (
+                body.loc[data_rows & ~pct_rows_body, c].apply(fmt_num)
+            )
+
+        # (2) % 행: disp 원본 숫자 → 퍼센트 포맷
+        for c in NUM_COLS:
+            if c in disp.columns:
+                raw_vals = disp.loc[pct_rows_disp, c].values
+                body.loc[pct_rows_body, c] = [fmt_pct(v) for v in raw_vals]
+
+        # (3) 전월비 컬럼 포맷 (톤)
+        for c in diff_cols:
+            body.loc[data_rows, c] = body.loc[data_rows, c].apply(fmt_diff)
+
+        # (4) 전월비 % 컬럼 포맷
+        for c in pct_cols:
+            body.loc[data_rows, c] = body.loc[data_rows, c].apply(fmt_pct)
+
+
+
+        styles = [
+            {"selector": "thead", "props": [("display", "none")]},
+
+            # hdr1(첫 행) 중앙 정렬 + 볼드
+            {"selector": "tbody tr:nth-child(1) td",
+             "props": [("font-weight","700"), ("text-align","center")]},
+
+             # hdr2(두번째 행) 중앙 정렬 + 볼드
+            {"selector": "tbody tr:nth-child(2) td",
+             "props": [("font-weight","700"), ("text-align","center")]},
+
+            # 구분1/구분2 왼쪽정렬 (hdr1 제외)
+            {"selector": "tbody tr:nth-child(n+2) td:nth-child(1), tbody tr:nth-child(n+2) td:nth-child(2)",
+             "props": [("text-align", "left")]},
+
+            # 숫자는 오른쪽 정렬 (hdr1 제외)
+            {"selector": "tbody tr:nth-child(n+2) td:nth-child(n+3)",
+             "props": [("text-align", "right")]},
+
+            # 공장명 bold (데이터부)
+            {"selector": "tbody tr:nth-child(n+2) td:nth-child(1)",
+             "props": [("font-weight","700")]},
+
+            {"selector": "tbody tr td:nth-child(2)",
+             "props": [("white-space","nowrap")]},
+        ]
+
+        display_styled_df(body, styles=styles, already_flat=True)
+        display_memo('f_68', this_year, current_month)
+
+    except Exception as e:
+        st.error(f"등급별 판매현황 오류: {e}")
+
+    st.divider()
+
+
+# Footer
+st.markdown("""
+<style>.footer { bottom: 0; left: 0; right: 0; padding: 8px; text-align: center; font-size: 13px; color: #666666;}</style>
+<div class="footer">ⓒ 2025 SeAH Special Steel Corp. All rights reserved.</div>
+""", unsafe_allow_html=True)
