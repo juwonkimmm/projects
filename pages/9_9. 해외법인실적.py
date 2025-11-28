@@ -279,6 +279,190 @@ st.markdown(f"## {year}년 {month}월 해외법인실적")
 
 t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(['1. 손익요약', '2. 현금흐름', '3. 재무상태표', '4. 판매구성', '5. 전월대비 손익차이', '6. 재고자산 현황', '7. 채권현황', '8. 인원현황'])
 
+with t1:
+    st.markdown("<h4> 1) 손익요약</h4>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='text-align:left; font-size:13px; color:#666;'>"
+        "[단위: 톤, 백만원, %]</div>",
+        unsafe_allow_html=True
+    )
+
+    try:
+        file_name = st.secrets["sheets"]["f_61"]
+        raw = pd.read_csv(file_name, dtype=str)
+
+        year  = int(st.session_state["year"])
+        month = int(st.session_state["month"])
+
+        # ====== 데이터 가공 (modules) ======
+        body = modules.create_abroad_profit_month_block_table(
+            df_raw=raw,
+            year=year,
+            month=month
+        )
+
+        # ====== 포맷 함수 ======
+        def fmt_amt(x):
+            if pd.isna(x):
+                return ""
+            try:
+                v = float(x)
+            except Exception:
+                return str(x)
+            v_rounded = int(round(v))
+            return f"({abs(v_rounded):,})" if v_rounded < 0 else f"{v_rounded:,}"
+
+        def fmt_pct(x):
+            if pd.isna(x):
+                return ""
+            try:
+                v = float(x)
+            except Exception:
+                return str(x)
+            return f"{v:.1f}"
+
+        disp = body.copy()
+        assert set(["대분류", "구분"]).issubset(disp.columns), "'대분류', '구분' 컬럼이 필요합니다."
+
+        # 수치 컬럼
+        num_cols = [c for c in disp.columns if c not in ["대분류", "구분"]]
+
+        # 퍼센트 행: 대분류에 '(%)' 포함
+        pct_mask = disp["대분류"].astype(str).str.contains("%")
+
+        # 숫자형 변환 + 포맷
+        for c in num_cols:
+            disp[c] = pd.to_numeric(disp[c], errors="coerce")
+            disp.loc[~pct_mask, c] = disp.loc[~pct_mask, c].apply(fmt_amt)
+            disp.loc[ pct_mask, c] = disp.loc[ pct_mask, c].apply(fmt_pct)
+
+        # ====== SPACER 열 & 그룹 라벨 ======
+        SPACER = "__spacer__"
+        disp.insert(0, SPACER, "")
+
+        current_grp = None
+        for i in disp.index:
+            g = disp.loc[i, "대분류"]
+            if g != current_grp:
+                disp.at[i, SPACER] = g
+                current_grp = g
+
+        # 화면에는 '대분류' 컬럼은 숨김
+        disp = disp.drop(columns=["대분류"])
+
+        cols = disp.columns.tolist()
+        c_idx = {c: i for i, c in enumerate(cols)}
+
+        # ====== 2단 가짜 헤더 생성 ======
+        pm = month - 1 if month > 1 else 12
+        yy = str(year)[-2:]
+
+        col_prev  = f"{pm}월실적"
+        col_m_pln = f"{month}월계획"
+        col_m_act = f"{month}월실적"
+        col_m_gap = f"{month}월계획비"
+        col_m_mom = f"{month}월전월비"
+        col_acc_p = f"'{yy}년누적계획"
+        col_acc_a = f"'{yy}년누적실적"
+        col_acc_g = f"'{yy}년누적계획비"
+
+        hdr1 = [""] * len(cols)
+        hdr2 = [""] * len(cols)
+
+        # 왼쪽 구분 라벨
+        hdr1[c_idx[SPACER]] = "구분"
+        hdr1[c_idx["구분"]] = ""
+
+        # 전월
+        if col_prev in c_idx:
+            hdr1[c_idx[col_prev]] = f"{pm}월"
+            hdr2[c_idx[col_prev]] = "실적"
+
+        # 당월
+        for c, lab in [
+            (col_m_pln, "계획"),
+            (col_m_act, "실적"),
+            (col_m_gap, "계획비"),
+            (col_m_mom, "전월비"),
+        ]:
+            if c in c_idx:
+                hdr1[c_idx[c]] = f"{month}월"
+                hdr2[c_idx[c]] = lab
+
+        # 누적
+        acc_label = f"'{yy}년 누적"
+        for c, lab in [
+            (col_acc_p, "계획"),
+            (col_acc_a, "실적"),
+            (col_acc_g, "계획비"),
+        ]:
+            if c in c_idx:
+                hdr1[c_idx[c]] = acc_label
+                hdr2[c_idx[c]] = lab
+
+        hdr_df = pd.DataFrame([hdr1, hdr2], columns=cols)
+        disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
+
+        # ====== 스타일 ======
+        styles = [
+            # thead 숨김
+            {'selector': 'thead', 'props': [('display', 'none')]},
+
+            # 헤더 1행
+            {
+                'selector': 'tbody tr:nth-child(1) td',
+                'props': [
+                    ('text-align', 'center'),
+                    ('padding', '6px 8px'),
+                    ('font-weight', '600'),
+                    ('border-bottom', '1px solid #999')
+                ]
+            },
+            # 헤더 2행
+            {
+                'selector': 'tbody tr:nth-child(2) td',
+                'props': [
+                    ('text-align', 'center'),
+                    ('padding', '6px 8px'),
+                    ('font-weight', '600'),
+                    ('border-bottom', '2px solid #555')
+                ]
+            },
+            # 스페이서 열
+            {
+                'selector': 'tbody td:nth-child(1)',
+                'props': [
+                    ('min-width', '80px'),
+                    ('white-space', 'nowrap'),
+                    ('font-weight', '600'),
+                    ('border-right', '1px solid #999')
+                ]
+            },
+            # '구분' 열 (2열) 좌측 정렬
+            {
+                'selector': 'tbody tr td:nth-child(2)',
+                'props': [
+                    ('text-align', 'left'),
+                    ('white-space', 'nowrap')
+                ]
+            }
+        ]
+
+        display_styled_df(
+            disp_vis,
+            styles=styles,
+            already_flat=True
+        )
+
+        display_memo('f_61', year, month)
+
+    except Exception as e:
+        st.error(f"손익요약 생성 중 오류: {e}")
+    
+    st.divider()
+
+
+
 with t2:
 
     st.markdown("<h4> 1) 현금흐름 남통법인</h4>", unsafe_allow_html=True)
@@ -759,7 +943,7 @@ with t2:
             "기타",
             "자산부채증감",
             "매출채권 감소(증가)",
-            "기타채권 감소(증가)",   # ★ 추가
+            "기타채권 감소(증가)",   
             "재고자산 감소(증가)",
             "기타자산 감소(증가)",
             "매입채무 증가(감소)",
@@ -1650,7 +1834,7 @@ with t3:
         yy_m2    = f"{(year_int - 2) % 100:02d}"
         yy_m3    = f"{(year_int - 3) % 100:02d}"
 
-        # create_bs_from_company에서 만들어진 컬럼명과 매칭
+
         col_yend_m3 = f"'{yy_m3}년말"
         col_yend_m2 = f"'{yy_m2}년말"
         col_yend_m1 = f"'{yy_m1}년말"
@@ -1662,6 +1846,7 @@ with t3:
         y1_i   = c_idx[col_yend_m1]
         prev_i = c_idx[col_prev]
 
+
         # ===========================
         # 5) 3단 헤더 구성
         # ===========================
@@ -1669,15 +1854,21 @@ with t3:
         hdr2 = [''] * len(cols)
         hdr3 = [''] * len(cols)
 
-        # ✅ 인덱스 컬럼/과거 연말 컬럼들은 그대로 2층에만 라벨
         hdr2[gu_i] = '남통'
         hdr2[y3_i] = f"'{yy_m3}년말"   # 선택 전전전년 말
         hdr2[y2_i] = f"'{yy_m2}년말"   # 선택 전전년 말
         hdr2[y1_i] = f"'{yy_m1}년말"   # 전년말
 
-        year_label = f"'{yy_curr}년"
-        hdr1[prev_i]  = year_label
-        hdr1[month_i] = year_label
+
+        prev_year_int = year_int
+        if used_m is not None and prev_m is not None and prev_m > used_m:
+            prev_year_int = year_int - 1
+
+        yy_curr_hdr = f"{year_int % 100:02d}"        # 당월 연도 (예: 2025 -> '25')
+        yy_prev_hdr = f"{prev_year_int % 100:02d}"   # 전월 연도 (예: 2024 -> '24')
+
+        hdr1[prev_i]  = f"'{yy_prev_hdr}년"   # 전월용 연도
+        hdr1[month_i] = f"'{yy_curr_hdr}년"   # 당월용 연도
 
         hdr2[prev_i]  = f"{prev_m}월"   # 예: 3월
         hdr2[month_i] = f"{used_m}월"   # 예: 4월
@@ -2168,15 +2359,21 @@ with t3:
         hdr2 = [''] * len(cols)
         hdr3 = [''] * len(cols)
 
-        # ✅ 인덱스 컬럼/과거 연말 컬럼들은 그대로 2층에만 라벨
         hdr2[gu_i] = '천진'
         hdr2[y3_i] = f"'{yy_m3}년말"   # 선택 전전전년 말
         hdr2[y2_i] = f"'{yy_m2}년말"   # 선택 전전년 말
         hdr2[y1_i] = f"'{yy_m1}년말"   # 전년말
 
-        year_label = f"'{yy_curr}년"
-        hdr1[prev_i]  = year_label
-        hdr1[month_i] = year_label
+
+        prev_year_int = year_int
+        if used_m is not None and prev_m is not None and prev_m > used_m:
+            prev_year_int = year_int - 1
+
+        yy_curr_hdr = f"{year_int % 100:02d}"        # 당월 연도 (예: 2025 -> '25')
+        yy_prev_hdr = f"{prev_year_int % 100:02d}"   # 전월 연도 (예: 2024 -> '24')
+
+        hdr1[prev_i]  = f"'{yy_prev_hdr}년"   # 전월용 연도
+        hdr1[month_i] = f"'{yy_curr_hdr}년"   # 당월용 연도
 
         hdr2[prev_i]  = f"{prev_m}월"   # 예: 3월
         hdr2[month_i] = f"{used_m}월"   # 예: 4월
@@ -2668,15 +2865,21 @@ with t3:
         hdr2 = [''] * len(cols)
         hdr3 = [''] * len(cols)
 
-        # ✅ 인덱스 컬럼/과거 연말 컬럼들은 그대로 2층에만 라벨
-        hdr2[gu_i] = '태국'
+        hdr2[gu_i] = '남통'
         hdr2[y3_i] = f"'{yy_m3}년말"   # 선택 전전전년 말
         hdr2[y2_i] = f"'{yy_m2}년말"   # 선택 전전년 말
         hdr2[y1_i] = f"'{yy_m1}년말"   # 전년말
 
-        year_label = f"'{yy_curr}년"
-        hdr1[prev_i]  = year_label
-        hdr1[month_i] = year_label
+
+        prev_year_int = year_int
+        if used_m is not None and prev_m is not None and prev_m > used_m:
+            prev_year_int = year_int - 1
+
+        yy_curr_hdr = f"{year_int % 100:02d}"        # 당월 연도 (예: 2025 -> '25')
+        yy_prev_hdr = f"{prev_year_int % 100:02d}"   # 전월 연도 (예: 2024 -> '24')
+
+        hdr1[prev_i]  = f"'{yy_prev_hdr}년"   # 전월용 연도
+        hdr1[month_i] = f"'{yy_curr_hdr}년"   # 당월용 연도
 
         hdr2[prev_i]  = f"{prev_m}월"   # 예: 3월
         hdr2[month_i] = f"{used_m}월"   # 예: 4월
@@ -3150,8 +3353,8 @@ with t4:
         data_rows = body.index >= 2
 
         # disp 기준 % 행 (행 단위 %)
-        pct_rows_disp = disp["구분2"] == "%"
-        pct_rows_body = (body["구분2"] == "%") & data_rows
+        pct_rows_disp = disp["구분2"].isin(["%", "POSCO %"])
+        pct_rows_body = body["구분2"].isin(["%", "POSCO %"]) & data_rows
 
         # (1) 일반 숫자행: 콤마 포맷
         for c in NUM_COLS:
@@ -3206,9 +3409,1187 @@ with t4:
         display_memo('f_68', this_year, current_month)
 
     except Exception as e:
-        st.error(f"등급별 판매현황 오류: {e}")
+        st.error(f"등급별 판매현황 표 생성 오류: {e}")
 
     st.divider()
+
+    st.markdown("<h4> 2) CHQ 열처리 제품 판매현황</h4>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 톤]</div>", unsafe_allow_html=True)
+
+    try:
+        file_name = st.secrets["sheets"]["f_69_70_71"]
+        df_src = pd.read_csv(file_name, dtype=str)
+
+
+
+
+
+        yy = str(year)[-2:]   # 2025 -> '25'
+
+
+
+        disp = modules.build_chq_f69(df_src, year, month)
+        body = disp.copy()
+
+        yy = str(year)[-2:]
+
+        # 직전 3개 연도 라벨 (모듈과 맞춰야 함)
+        prev_years = []
+        for y in range(year - 3, year):
+            if y == year - 1:
+                prev_years.append(f"'{str(y)[-2:]}년 누계")
+            else:
+                prev_years.append(f"'{str(y)[-2:]}년")
+
+        # 최근 3개월
+        month_cols = []
+        for m in range(month - 2, month + 1):
+            if m >= 1:
+                month_cols.append(f"{yy}년{m}월")
+
+        candidate_cols = prev_years + month_cols
+        NUM_COLS = [c for c in candidate_cols if c in body.columns]
+
+
+
+
+        hdr1 = {col: "" for col in body.columns}
+        hdr2 = {col: "" for col in body.columns}
+
+        if "구분2" in hdr1:
+            hdr1["구분2"] = "구분"
+
+        # 직전 3개 연도
+        for y_col in prev_years:
+            if y_col in hdr1:
+                hdr1[y_col] = f"'{y_col}"
+
+        month_group = [c for c in month_cols if c in body.columns]
+
+        first = True
+        for c in month_group:
+            if first:
+                hdr1[c] = f"'{yy}년"
+                first = False
+            else:
+                hdr1[c] = ""
+            hdr2[c] = c.split("년")[1]   # "6월" 등
+
+        ym_group = []
+        ym_group += [c for c in diff_cols if c in body.columns]
+        ym_group += [c for c in pct_cols  if c in body.columns]
+
+        first = True
+        for c in ym_group:
+            if first:
+                hdr1[c] = f"'{yy}.{month}월"   # 예: '25.8월
+                first = False
+            else:
+                hdr1[c] = ""
+
+            if c in diff_cols:
+                hdr2[c] = "전월比"
+            else:
+                hdr2[c] = "%"
+
+        # body 맨 위에 hdr1, hdr2 추가
+        hdr_df = pd.DataFrame([hdr1, hdr2])
+        body = pd.concat([hdr_df, body], ignore_index=True)
+
+        # =========================
+        #  포맷팅 함수
+        # =========================
+        def fmt_num(v):
+            try:
+                v = float(v)
+            except:
+                return ""
+            return f"{v:,.0f}"
+
+        def fmt_diff(v):
+            try:
+                v = float(v)
+            except:
+                return ""
+            if v < 0:
+                return f'<span style="color:#d62728;">({abs(v):,.0f})</span>'
+            return f"{v:,.0f}"
+
+        def fmt_pct(v):
+            try:
+                v = float(v)
+            except:
+                return ""
+            return f"{v:.1f}%"
+
+        # 0,1행 = 가짜 헤더
+        data_rows = body.index >= 2
+
+        # % 행(열처리 비율)
+        pct_rows_disp = disp["구분2"] == "%"
+        pct_rows_body = (body["구분2"] == "%") & data_rows
+
+        # (1) 일반 숫자행: 콤마
+        for c in NUM_COLS:
+            body.loc[data_rows & ~pct_rows_body, c] = (
+                body.loc[data_rows & ~pct_rows_body, c].apply(fmt_num)
+            )
+
+        # (2) % 행: 숫자 → 퍼센트 포맷
+        for c in NUM_COLS:
+            if c in disp.columns:
+                raw_vals = disp.loc[pct_rows_disp, c].values
+                body.loc[pct_rows_body, c] = [fmt_pct(v) for v in raw_vals]
+
+        # (3) 전월비 (톤)
+        for c in diff_cols:
+            # % 행은 pp 표현이 필요하면 여기서 따로 처리 가능(원하면)
+            body.loc[data_rows & ~pct_rows_body, c] = (
+                body.loc[data_rows & ~pct_rows_body, c].apply(fmt_diff)
+            )
+            # % 행은 pp 그대로 숫자만 두고 싶으면:
+            body.loc[pct_rows_body, c] = body.loc[pct_rows_body, c].apply(
+                lambda v: f"{float(v):.1f}pp" if v not in ("", None) else ""
+            )
+
+        # (4) 전월비 % 컬럼
+        for c in pct_cols:
+            body.loc[data_rows, c] = body.loc[data_rows, c].apply(fmt_pct)
+
+        # =========================
+        #  스타일
+        # =========================
+        styles = [
+            {"selector": "thead", "props": [("display", "none")]},
+            {"selector": "tbody tr:nth-child(1) td",
+            "props": [("font-weight","700"), ("text-align","center")]},
+            {"selector": "tbody tr:nth-child(2) td",
+            "props": [("font-weight","700"), ("text-align","center")]},
+            {"selector": "tbody tr:nth-child(n+2) td:nth-child(1), tbody tr:nth-child(n+2) td:nth-child(2)",
+            "props": [("text-align", "left")]},
+            {"selector": "tbody tr:nth-child(n+2) td:nth-child(n+3)",
+            "props": [("text-align", "right")]},
+            {"selector": "tbody tr:nth-child(n+2) td:nth-child(1)",
+            "props": [("font-weight","700")]},
+            {"selector": "tbody tr td:nth-child(2)",
+            "props": [("white-space","nowrap")]},
+        ]
+
+        display_styled_df(body, styles=styles, already_flat=True)
+        display_memo('f_69', year, month)
+
+    except Exception as e:
+        st.error(f"CHQ 열처리 제품 판매현황 표 생성 오류: {e}")
+    
+    st.divider()
+
+
+    st.markdown("<h4> 3) 비가공품 판매현황</h4>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 톤]</div>", unsafe_allow_html=True)
+
+    try:
+        file_name = st.secrets["sheets"]["f_69_70_71"]
+        df_src = pd.read_csv(file_name, dtype=str)
+
+
+
+
+
+        yy = str(year)[-2:]   # 2025 -> '25'
+
+
+
+        disp = modules.build_f70(df_src, year, month)
+        body = disp.copy()
+
+        yy = str(year)[-2:]
+
+        # 직전 3개 연도 라벨 (모듈과 맞춰야 함)
+        prev_years = []
+        for y in range(year - 3, year):
+            if y == year - 1:
+                prev_years.append(f"'{str(y)[-2:]}년 누계")
+            else:
+                prev_years.append(f"'{str(y)[-2:]}년")
+
+        # 최근 3개월
+        month_cols = []
+        for m in range(month - 2, month + 1):
+            if m >= 1:
+                month_cols.append(f"{yy}년{m}월")
+
+        candidate_cols = prev_years + month_cols
+        NUM_COLS = [c for c in candidate_cols if c in body.columns]
+
+
+
+
+        hdr1 = {col: "" for col in body.columns}
+        hdr2 = {col: "" for col in body.columns}
+
+        if "구분2" in hdr1:
+            hdr1["구분2"] = "구분"
+
+        # 직전 3개 연도
+        for y_col in prev_years:
+            if y_col in hdr1:
+                hdr1[y_col] = f"'{y_col}"
+
+        month_group = [c for c in month_cols if c in body.columns]
+
+        first = True
+        for c in month_group:
+            if first:
+                hdr1[c] = f"'{yy}년"
+                first = False
+            else:
+                hdr1[c] = ""
+            hdr2[c] = c.split("년")[1]   # "6월" 등
+
+        ym_group = []
+        ym_group += [c for c in diff_cols if c in body.columns]
+        ym_group += [c for c in pct_cols  if c in body.columns]
+
+        first = True
+        for c in ym_group:
+            if first:
+                hdr1[c] = f"'{yy}.{month}월"   # 예: '25.8월
+                first = False
+            else:
+                hdr1[c] = ""
+
+            if c in diff_cols:
+                hdr2[c] = "전월比"
+            else:
+                hdr2[c] = "%"
+
+        # body 맨 위에 hdr1, hdr2 추가
+        hdr_df = pd.DataFrame([hdr1, hdr2])
+        body = pd.concat([hdr_df, body], ignore_index=True)
+
+        # =========================
+        #  포맷팅 함수
+        # =========================
+        def fmt_num(v):
+            try:
+                v = float(v)
+            except:
+                return ""
+            return f"{v:,.0f}"
+
+        def fmt_diff(v):
+            try:
+                v = float(v)
+            except:
+                return ""
+            if v < 0:
+                return f'<span style="color:#d62728;">({abs(v):,.0f})</span>'
+            return f"{v:,.0f}"
+
+        def fmt_pct(v):
+            try:
+                v = float(v)
+            except:
+                return ""
+            return f"{v:.1f}%"
+
+        # 0,1행 = 가짜 헤더
+        data_rows = body.index >= 2
+
+        # % 행(열처리 비율)
+        pct_rows_disp = disp["구분2"] == "%"
+        pct_rows_body = (body["구분2"] == "%") & data_rows
+
+        # (1) 일반 숫자행: 콤마
+        for c in NUM_COLS:
+            body.loc[data_rows & ~pct_rows_body, c] = (
+                body.loc[data_rows & ~pct_rows_body, c].apply(fmt_num)
+            )
+
+        # (2) % 행: 숫자 → 퍼센트 포맷
+        for c in NUM_COLS:
+            if c in disp.columns:
+                raw_vals = disp.loc[pct_rows_disp, c].values
+                body.loc[pct_rows_body, c] = [fmt_pct(v) for v in raw_vals]
+
+        # (3) 전월비 (톤)
+        for c in diff_cols:
+            # % 행은 pp 표현이 필요하면 여기서 따로 처리 가능(원하면)
+            body.loc[data_rows & ~pct_rows_body, c] = (
+                body.loc[data_rows & ~pct_rows_body, c].apply(fmt_diff)
+            )
+            # % 행은 pp 그대로 숫자만 두고 싶으면:
+            body.loc[pct_rows_body, c] = body.loc[pct_rows_body, c].apply(
+                lambda v: f"{float(v):.1f}pp" if v not in ("", None) else ""
+            )
+
+        # (4) 전월비 % 컬럼
+        for c in pct_cols:
+            body.loc[data_rows, c] = body.loc[data_rows, c].apply(fmt_pct)
+
+        # =========================
+        #  스타일
+        # =========================
+        styles = [
+            {"selector": "thead", "props": [("display", "none")]},
+            {"selector": "tbody tr:nth-child(1) td",
+            "props": [("font-weight","700"), ("text-align","center")]},
+            {"selector": "tbody tr:nth-child(2) td",
+            "props": [("font-weight","700"), ("text-align","center")]},
+            {"selector": "tbody tr:nth-child(n+2) td:nth-child(1), tbody tr:nth-child(n+2) td:nth-child(2)",
+            "props": [("text-align", "left")]},
+            {"selector": "tbody tr:nth-child(n+2) td:nth-child(n+3)",
+            "props": [("text-align", "right")]},
+            {"selector": "tbody tr:nth-child(n+2) td:nth-child(1)",
+            "props": [("font-weight","700")]},
+            {"selector": "tbody tr td:nth-child(2)",
+            "props": [("white-space","nowrap")]},
+        ]
+
+        display_styled_df(body, styles=styles, already_flat=True)
+        display_memo('f_70', year, month)
+
+    except Exception as e:
+        st.error(f"비가공품 판매현황 표 생성 오류: {e}")
+
+
+
+    st.divider()
+
+
+    st.markdown("<h4> 4) 제품/임가공 판매현황</h4>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 톤]</div>", unsafe_allow_html=True)
+
+    try:
+        file_name = st.secrets["sheets"]["f_69_70_71"]
+        df_src = pd.read_csv(file_name, dtype=str)
+
+
+
+
+
+        yy = str(year)[-2:]   # 2025 -> '25'
+
+
+
+        disp = modules.build_f71(df_src, year, month)
+        body = disp.copy()
+
+        yy = str(year)[-2:]
+
+        # 직전 3개 연도 라벨 (모듈과 맞춰야 함)
+        prev_years = []
+        for y in range(year - 3, year):
+            if y == year - 1:
+                prev_years.append(f"'{str(y)[-2:]}년 누계")
+            else:
+                prev_years.append(f"'{str(y)[-2:]}년")
+
+        # 최근 3개월
+        month_cols = []
+        for m in range(month - 2, month + 1):
+            if m >= 1:
+                month_cols.append(f"{yy}년{m}월")
+
+        candidate_cols = prev_years + month_cols
+        NUM_COLS = [c for c in candidate_cols if c in body.columns]
+
+
+
+
+        hdr1 = {col: "" for col in body.columns}
+        hdr2 = {col: "" for col in body.columns}
+
+        if "구분2" in hdr1:
+            hdr1["구분2"] = "구분"
+
+        # 직전 3개 연도
+        for y_col in prev_years:
+            if y_col in hdr1:
+                hdr1[y_col] = f"'{y_col}"
+
+        month_group = [c for c in month_cols if c in body.columns]
+
+        first = True
+        for c in month_group:
+            if first:
+                hdr1[c] = f"'{yy}년"
+                first = False
+            else:
+                hdr1[c] = ""
+            hdr2[c] = c.split("년")[1]   # "6월" 등
+
+        ym_group = []
+        ym_group += [c for c in diff_cols if c in body.columns]
+        ym_group += [c for c in pct_cols  if c in body.columns]
+
+        first = True
+        for c in ym_group:
+            if first:
+                hdr1[c] = f"'{yy}.{month}월"   # 예: '25.8월
+                first = False
+            else:
+                hdr1[c] = ""
+
+            if c in diff_cols:
+                hdr2[c] = "전월比"
+            else:
+                hdr2[c] = "%"
+
+        # body 맨 위에 hdr1, hdr2 추가
+        hdr_df = pd.DataFrame([hdr1, hdr2])
+        body = pd.concat([hdr_df, body], ignore_index=True)
+
+        # =========================
+        #  포맷팅 함수
+        # =========================
+        def fmt_num(v):
+            try:
+                v = float(v)
+            except:
+                return ""
+            return f"{v:,.0f}"
+
+        def fmt_diff(v):
+            try:
+                v = float(v)
+            except:
+                return ""
+            if v < 0:
+                return f'<span style="color:#d62728;">({abs(v):,.0f})</span>'
+            return f"{v:,.0f}"
+
+        def fmt_pct(v):
+            try:
+                v = float(v)
+            except:
+                return ""
+            return f"{v:.1f}%"
+
+        # 0,1행 = 가짜 헤더
+        data_rows = body.index >= 2
+
+        # % 행(열처리 비율)
+        pct_rows_disp = disp["구분2"] == "%"
+        pct_rows_body = (body["구분2"] == "%") & data_rows
+
+        # (1) 일반 숫자행: 콤마
+        for c in NUM_COLS:
+            body.loc[data_rows & ~pct_rows_body, c] = (
+                body.loc[data_rows & ~pct_rows_body, c].apply(fmt_num)
+            )
+
+        # (2) % 행: 숫자 → 퍼센트 포맷
+        for c in NUM_COLS:
+            if c in disp.columns:
+                raw_vals = disp.loc[pct_rows_disp, c].values
+                body.loc[pct_rows_body, c] = [fmt_pct(v) for v in raw_vals]
+
+        # (3) 전월비 (톤)
+        for c in diff_cols:
+            # % 행은 pp 표현이 필요하면 여기서 따로 처리 가능(원하면)
+            body.loc[data_rows & ~pct_rows_body, c] = (
+                body.loc[data_rows & ~pct_rows_body, c].apply(fmt_diff)
+            )
+            # % 행은 pp 그대로 숫자만 두고 싶으면:
+            body.loc[pct_rows_body, c] = body.loc[pct_rows_body, c].apply(
+                lambda v: f"{float(v):.1f}pp" if v not in ("", None) else ""
+            )
+
+        # (4) 전월비 % 컬럼
+        for c in pct_cols:
+            body.loc[data_rows, c] = body.loc[data_rows, c].apply(fmt_pct)
+
+        # =========================
+        #  스타일
+        # =========================
+        styles = [
+            {"selector": "thead", "props": [("display", "none")]},
+            {"selector": "tbody tr:nth-child(1) td",
+            "props": [("font-weight","700"), ("text-align","center")]},
+            {"selector": "tbody tr:nth-child(2) td",
+            "props": [("font-weight","700"), ("text-align","center")]},
+            {"selector": "tbody tr:nth-child(n+2) td:nth-child(1), tbody tr:nth-child(n+2) td:nth-child(2)",
+            "props": [("text-align", "left")]},
+            {"selector": "tbody tr:nth-child(n+2) td:nth-child(n+3)",
+            "props": [("text-align", "right")]},
+            {"selector": "tbody tr:nth-child(n+2) td:nth-child(1)",
+            "props": [("font-weight","700")]},
+            {"selector": "tbody tr td:nth-child(2)",
+            "props": [("white-space","nowrap")]},
+        ]
+
+        display_styled_df(body, styles=styles, already_flat=True)
+
+        display_memo('f_71', year, month)
+        
+
+    except Exception as e:
+        st.error(f"제품/임가공 판매현황 표 생성 오류: {e}")
+    
+    st.divider()
+
+
+with t6:
+
+    st.markdown("<h4> 1) 재고자산 현황 남통법인</h4>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 톤, 백만원, %]</div>", unsafe_allow_html=True)
+
+
+    try:
+        # 0) 데이터 로딩
+        file_name = st.secrets["sheets"]["f_75_76_77"]  
+        raw = pd.read_csv(file_name, dtype=str)
+
+        importlib.invalidate_caches()
+        importlib.reload(modules)
+
+
+        inv = modules.create_inv_table_from_company(
+            year=int(st.session_state['year']),    
+            month=int(st.session_state['month']),  
+            data=raw,
+            company_name='남통',
+        )
+
+        # 2) 표시용 복사 & 인덱스 풀기
+        disp = inv.copy().reset_index()  
+        SPACER = "__spacer__"
+        disp.insert(0, SPACER, "")
+
+        # 3) 숫자 포맷 함수
+        def fmt_amt(x):
+            """금액: 0은 공란, 음수는 괄호, 천단위 콤마"""
+            if pd.isna(x):
+                return "0"
+            try:
+                v = float(x)
+            except Exception:
+                return x
+            if v == 0:
+                return "0"
+            v_rounded = int(round(v))
+            return f"({abs(v_rounded):,})" if v_rounded < 0 else f"{v_rounded:,}"
+
+        def fmt_rate(x):
+            """증감률: 0 / NaN 은 공란, 정수 %"""
+            if pd.isna(x):
+                return "0%"
+            try:
+                v = float(x)
+            except Exception:
+                return x
+            if v == 0:
+                return ""
+            return f"{int(round(v))}%"
+
+        # 4) 컬럼별 포맷 적용
+        for c in disp.columns:
+            if c in (SPACER, '구분2', '구분3'):
+                continue
+            if c == '증감률':
+                disp[c] = disp[c].apply(fmt_rate)
+            else:
+                disp[c] = disp[c].apply(fmt_amt)
+
+        # 5) 헤더 3단 구성
+        cols = disp.columns.tolist()
+        c_idx = {c: i for i, c in enumerate(cols)}
+
+        spacer_i = c_idx[SPACER]
+        big_i    = c_idx['구분2']
+        mid_i    = c_idx['구분3']
+        diff_i   = c_idx['증량']
+        rate_i   = c_idx['증감률']
+
+
+        used_m   = int(inv.attrs.get('used_month'))
+        prev_m   = int(inv.attrs.get('prev_month'))
+        prev2_m  = int(inv.attrs.get('prev2_month'))
+        year_int = int(inv.attrs.get('base_year'))
+        company  = inv.attrs.get('company', '남통')
+
+        yy_curr  = f"{year_int % 100:02d}"
+        yy_m1    = f"{(year_int - 1) % 100:02d}"
+        yy_m2    = f"{(year_int - 2) % 100:02d}"
+        yy_m3    = f"{(year_int - 3) % 100:02d}"
+        yy_m4    = f"{(year_int - 4) % 100:02d}"
+
+
+        col_yend_m4 = f"'{yy_m4}년말"
+        col_yend_m3 = f"'{yy_m3}년말"
+        col_yend_m2 = f"'{yy_m2}년말"
+        col_yend_m1 = f"'{yy_m1}년말"
+
+
+        col_m3 = f"{prev2_m}월"
+        col_m2 = f"{prev_m}월"
+        col_m1 = f"{used_m}월"
+
+        y4_i = c_idx[col_yend_m4]
+        y3_i = c_idx[col_yend_m3]
+        y2_i = c_idx[col_yend_m2]
+        y1_i = c_idx[col_yend_m1]
+        m3_i = c_idx[col_m3]
+        m2_i = c_idx[col_m2]
+        m1_i = c_idx[col_m1]
+
+
+        hdr1 = [''] * len(cols)
+        hdr2 = [''] * len(cols)
+        hdr3 = [''] * len(cols)
+
+
+        hdr2[big_i] = f"[{company}]"     
+        
+        hdr2[y4_i] = col_yend_m4         
+        hdr2[y3_i] = col_yend_m3
+        hdr2[y2_i] = col_yend_m2
+        hdr2[y1_i] = col_yend_m1
+
+
+        used_year = year_int
+
+        m1_year = used_year
+
+       
+        m2_year = used_year
+        if prev_m > used_m:
+            m2_year = used_year - 1
+
+      
+        m3_year = m2_year
+        if prev2_m > prev_m:
+            m3_year = m2_year - 1
+
+        hdr1 = [''] * len(cols)  
+
+        year_runs = [
+            (m3_i, m3_year),
+            (m2_i, m2_year),
+            (m1_i, m1_year),
+        ]
+
+        last_year = None
+        for col_i, y in year_runs:
+            if y != last_year:
+                hdr1[col_i] = f"'{y % 100:02d}년"   
+                last_year = y
+       
+       
+        hdr2[m3_i] = f"{prev2_m}월"      
+        hdr2[m2_i] = f"{prev_m}월"       
+        hdr2[m1_i] = f"{used_m}월"       
+
+
+        hdr3[m1_i]   = "중량"
+        hdr3[diff_i] = "증감"
+        hdr3[rate_i] = "증감률"
+
+
+        # 나머지 셀들은 공백("") 유지
+
+        hdr_df   = pd.DataFrame([hdr1, hdr2, hdr3], columns=cols)
+        disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
+
+
+        # 6) 스타일 (기본 정렬/패딩만 간단히)
+        styles = [
+            {'selector': 'thead', 'props': [('display', 'none')]},
+
+            # 헤더 1·2·3행
+            {
+                'selector': 'tbody tr:nth-child(1) td',
+                'props': [('text-align', 'center'),
+                        ('padding', '4px 6px'),
+                        ('font-weight', '600')]
+            },
+            {
+                'selector': 'tbody tr:nth-child(2) td',
+                'props': [('text-align', 'center'),
+                        ('padding', '8px 6px'),
+                        ('font-weight', '600')]
+            },
+            {
+                'selector': 'tbody tr:nth-child(3) td',
+                'props': [('text-align', 'center'),
+                        ('padding', '10px 6px'),
+                        ('font-weight', '600')]
+            },
+
+            # 1열(spacer)은 얇게
+            {
+                'selector': 'tbody td:nth-child(1)',
+                'props': [('width', '8px'), ('border-right', '0')]
+            },
+
+            # 본문: 4행 이후
+            {
+                'selector': 'tbody tr:nth-child(n+4) td',
+                'props': [('line-height', '1.4'),
+                        ('padding', '6px 8px'),
+                        ('text-align', 'right')]
+            },
+            {
+                # 구분2, 구분3 열은 왼쪽 정렬
+                'selector': 'tbody tr:nth-child(n+4) td:nth-child(2), tbody tr:nth-child(n+4) td:nth-child(3)',
+                'props': [('text-align', 'left')]
+            },
+        ]
+
+        display_styled_df(
+            disp_vis,
+            styles=styles,
+            already_flat=True,
+        )
+        display_memo('f_75', this_year, current_month)
+
+
+    except Exception as e:
+        st.error(f"재고자산 현황 남통법인 표 생성 중 오류: {e}")
+
+    st.divider()
+
+    st.markdown("<h4> 2) 재고자산 현황 천진법인</h4>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 톤, 백만원, %]</div>", unsafe_allow_html=True)
+
+
+    try:
+        # 0) 데이터 로딩
+        file_name = st.secrets["sheets"]["f_75_76_77"]  
+        raw = pd.read_csv(file_name, dtype=str)
+
+        importlib.invalidate_caches()
+        importlib.reload(modules)
+
+
+        inv = modules.create_inv_table_from_company(
+            year=int(st.session_state['year']),   
+            month=int(st.session_state['month']), 
+            data=raw,
+            company_name='천진',
+        )
+
+        # 2) 표시용 복사 & 인덱스 풀기
+        disp = inv.copy().reset_index()  
+        SPACER = "__spacer__"
+        disp.insert(0, SPACER, "")
+
+        # 3) 숫자 포맷 함수
+        def fmt_amt(x):
+            """금액: 0은 공란, 음수는 괄호, 천단위 콤마"""
+            if pd.isna(x):
+                return ""
+            try:
+                v = float(x)
+            except Exception:
+                return x
+            if v == 0:
+                return "0"
+            v_rounded = int(round(v))
+            return f"({abs(v_rounded):,})" if v_rounded < 0 else f"{v_rounded:,}"
+
+        def fmt_rate(x):
+            """증감률: 0 / NaN 은 공란, 정수 %"""
+            if pd.isna(x):
+                return "0%"
+            try:
+                v = float(x)
+            except Exception:
+                return x
+            if v == 0:
+                return ""
+            return f"{int(round(v))}%"
+
+        # 4) 컬럼별 포맷 적용
+        for c in disp.columns:
+            if c in (SPACER, '구분2', '구분3'):
+                continue
+            if c == '증감률':
+                disp[c] = disp[c].apply(fmt_rate)
+            else:
+                disp[c] = disp[c].apply(fmt_amt)
+
+        # 5) 헤더 3단 구성
+        cols = disp.columns.tolist()
+        c_idx = {c: i for i, c in enumerate(cols)}
+
+        spacer_i = c_idx[SPACER]
+        big_i    = c_idx['구분2']
+        mid_i    = c_idx['구분3']
+        diff_i   = c_idx['증량']
+        rate_i   = c_idx['증감률']
+
+
+        used_m   = int(inv.attrs.get('used_month'))
+        prev_m   = int(inv.attrs.get('prev_month'))
+        prev2_m  = int(inv.attrs.get('prev2_month'))
+        year_int = int(inv.attrs.get('base_year'))
+        company  = inv.attrs.get('company', '남통')
+
+        yy_curr  = f"{year_int % 100:02d}"
+        yy_m1    = f"{(year_int - 1) % 100:02d}"
+        yy_m2    = f"{(year_int - 2) % 100:02d}"
+        yy_m3    = f"{(year_int - 3) % 100:02d}"
+        yy_m4    = f"{(year_int - 4) % 100:02d}"
+
+
+        col_yend_m4 = f"'{yy_m4}년말"
+        col_yend_m3 = f"'{yy_m3}년말"
+        col_yend_m2 = f"'{yy_m2}년말"
+        col_yend_m1 = f"'{yy_m1}년말"
+
+
+        col_m3 = f"{prev2_m}월"
+        col_m2 = f"{prev_m}월"
+        col_m1 = f"{used_m}월"
+
+        y4_i = c_idx[col_yend_m4]
+        y3_i = c_idx[col_yend_m3]
+        y2_i = c_idx[col_yend_m2]
+        y1_i = c_idx[col_yend_m1]
+        m3_i = c_idx[col_m3]
+        m2_i = c_idx[col_m2]
+        m1_i = c_idx[col_m1]
+
+
+        hdr1 = [''] * len(cols)
+        hdr2 = [''] * len(cols)
+        hdr3 = [''] * len(cols)
+
+
+        hdr2[big_i] = f"[{company}]"     
+        
+        hdr2[y4_i] = col_yend_m4         
+        hdr2[y3_i] = col_yend_m3
+        hdr2[y2_i] = col_yend_m2
+        hdr2[y1_i] = col_yend_m1
+
+
+        used_year = year_int
+
+        m1_year = used_year
+
+       
+        m2_year = used_year
+        if prev_m > used_m:
+            m2_year = used_year - 1
+
+      
+        m3_year = m2_year
+        if prev2_m > prev_m:
+            m3_year = m2_year - 1
+
+        hdr1 = [''] * len(cols)  
+
+        year_runs = [
+            (m3_i, m3_year),
+            (m2_i, m2_year),
+            (m1_i, m1_year),
+        ]
+
+        last_year = None
+        for col_i, y in year_runs:
+            if y != last_year:
+                hdr1[col_i] = f"'{y % 100:02d}년"   
+                last_year = y
+       
+       
+        hdr2[m3_i] = f"{prev2_m}월"      
+        hdr2[m2_i] = f"{prev_m}월"       
+        hdr2[m1_i] = f"{used_m}월"       
+
+
+        hdr3[m1_i]   = "중량"
+        hdr3[diff_i] = "증감"
+        hdr3[rate_i] = "증감률"
+
+
+        # 나머지 셀들은 공백("") 유지
+
+        hdr_df   = pd.DataFrame([hdr1, hdr2, hdr3], columns=cols)
+        disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
+
+
+        # 6) 스타일 (기본 정렬/패딩만 간단히)
+        styles = [
+            {'selector': 'thead', 'props': [('display', 'none')]},
+
+            # 헤더 1·2·3행
+            {
+                'selector': 'tbody tr:nth-child(1) td',
+                'props': [('text-align', 'center'),
+                        ('padding', '4px 6px'),
+                        ('font-weight', '600')]
+            },
+            {
+                'selector': 'tbody tr:nth-child(2) td',
+                'props': [('text-align', 'center'),
+                        ('padding', '8px 6px'),
+                        ('font-weight', '600')]
+            },
+            {
+                'selector': 'tbody tr:nth-child(3) td',
+                'props': [('text-align', 'center'),
+                        ('padding', '10px 6px'),
+                        ('font-weight', '600')]
+            },
+
+            # 1열(spacer)은 얇게
+            {
+                'selector': 'tbody td:nth-child(1)',
+                'props': [('width', '8px'), ('border-right', '0')]
+            },
+
+            # 본문: 4행 이후
+            {
+                'selector': 'tbody tr:nth-child(n+4) td',
+                'props': [('line-height', '1.4'),
+                        ('padding', '6px 8px'),
+                        ('text-align', 'right')]
+            },
+            {
+                # 구분2, 구분3 열은 왼쪽 정렬
+                'selector': 'tbody tr:nth-child(n+4) td:nth-child(2), tbody tr:nth-child(n+4) td:nth-child(3)',
+                'props': [('text-align', 'left')]
+            },
+        ]
+
+        display_styled_df(
+            disp_vis,
+            styles=styles,
+            already_flat=True,
+        )
+        display_memo('f_76', this_year, current_month)
+
+
+    except Exception as e:
+        st.error(f"재고자산 현황 천진법인 표 생성 중 오류: {e}")
+
+    st.divider()
+
+
+    st.markdown("<h4> 2) 재고자산 현황 태국법인</h4>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 톤, 백만원, %]</div>", unsafe_allow_html=True)
+
+
+    try:
+        # 0) 데이터 로딩
+        file_name = st.secrets["sheets"]["f_75_76_77"]  
+        raw = pd.read_csv(file_name, dtype=str)
+
+        importlib.invalidate_caches()
+        importlib.reload(modules)
+
+
+        inv = modules.create_inv_table_from_company(
+            year=int(st.session_state['year']),   
+            month=int(st.session_state['month']), 
+            data=raw,
+            company_name='태국',
+        )
+
+        # 2) 표시용 복사 & 인덱스 풀기
+        disp = inv.copy().reset_index()  
+        SPACER = "__spacer__"
+        disp.insert(0, SPACER, "")
+
+        # 3) 숫자 포맷 함수
+        def fmt_amt(x):
+            """금액: 0은 공란, 음수는 괄호, 천단위 콤마"""
+            if pd.isna(x):
+                return ""
+            try:
+                v = float(x)
+            except Exception:
+                return x
+            if v == 0:
+                return "0"
+            v_rounded = int(round(v))
+            return f"({abs(v_rounded):,})" if v_rounded < 0 else f"{v_rounded:,}"
+
+        def fmt_rate(x):
+            """증감률: 0 / NaN 은 공란, 정수 %"""
+            if pd.isna(x):
+                return "0%"
+            try:
+                v = float(x)
+            except Exception:
+                return x
+            if v == 0:
+                return ""
+            return f"{int(round(v))}%"
+
+        # 4) 컬럼별 포맷 적용
+        for c in disp.columns:
+            if c in (SPACER, '구분2', '구분3'):
+                continue
+            if c == '증감률':
+                disp[c] = disp[c].apply(fmt_rate)
+            else:
+                disp[c] = disp[c].apply(fmt_amt)
+
+        # 5) 헤더 3단 구성
+        cols = disp.columns.tolist()
+        c_idx = {c: i for i, c in enumerate(cols)}
+
+        spacer_i = c_idx[SPACER]
+        big_i    = c_idx['구분2']
+        mid_i    = c_idx['구분3']
+        diff_i   = c_idx['증량']
+        rate_i   = c_idx['증감률']
+
+
+        used_m   = int(inv.attrs.get('used_month'))
+        prev_m   = int(inv.attrs.get('prev_month'))
+        prev2_m  = int(inv.attrs.get('prev2_month'))
+        year_int = int(inv.attrs.get('base_year'))
+        company  = inv.attrs.get('company', '태국')
+
+        yy_curr  = f"{year_int % 100:02d}"
+        yy_m1    = f"{(year_int - 1) % 100:02d}"
+        yy_m2    = f"{(year_int - 2) % 100:02d}"
+        yy_m3    = f"{(year_int - 3) % 100:02d}"
+        yy_m4    = f"{(year_int - 4) % 100:02d}"
+
+
+        col_yend_m4 = f"'{yy_m4}년말"
+        col_yend_m3 = f"'{yy_m3}년말"
+        col_yend_m2 = f"'{yy_m2}년말"
+        col_yend_m1 = f"'{yy_m1}년말"
+
+
+        col_m3 = f"{prev2_m}월"
+        col_m2 = f"{prev_m}월"
+        col_m1 = f"{used_m}월"
+
+        y4_i = c_idx[col_yend_m4]
+        y3_i = c_idx[col_yend_m3]
+        y2_i = c_idx[col_yend_m2]
+        y1_i = c_idx[col_yend_m1]
+        m3_i = c_idx[col_m3]
+        m2_i = c_idx[col_m2]
+        m1_i = c_idx[col_m1]
+
+
+        hdr1 = [''] * len(cols)
+        hdr2 = [''] * len(cols)
+        hdr3 = [''] * len(cols)
+
+
+        hdr2[big_i] = f"[{company}]"     
+        
+        hdr2[y4_i] = col_yend_m4         
+        hdr2[y3_i] = col_yend_m3
+        hdr2[y2_i] = col_yend_m2
+        hdr2[y1_i] = col_yend_m1
+
+
+        used_year = year_int
+
+        m1_year = used_year
+
+       
+        m2_year = used_year
+        if prev_m > used_m:
+            m2_year = used_year - 1
+
+      
+        m3_year = m2_year
+        if prev2_m > prev_m:
+            m3_year = m2_year - 1
+
+        hdr1 = [''] * len(cols)  
+
+        year_runs = [
+            (m3_i, m3_year),
+            (m2_i, m2_year),
+            (m1_i, m1_year),
+        ]
+
+        last_year = None
+        for col_i, y in year_runs:
+            if y != last_year:
+                hdr1[col_i] = f"'{y % 100:02d}년"   
+                last_year = y
+       
+       
+        hdr2[m3_i] = f"{prev2_m}월"      
+        hdr2[m2_i] = f"{prev_m}월"       
+        hdr2[m1_i] = f"{used_m}월"       
+
+
+        hdr3[m1_i]   = "중량"
+        hdr3[diff_i] = "증감"
+        hdr3[rate_i] = "증감률"
+
+
+        # 나머지 셀들은 공백("") 유지
+
+        hdr_df   = pd.DataFrame([hdr1, hdr2, hdr3], columns=cols)
+        disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
+
+
+        # 6) 스타일 (기본 정렬/패딩만 간단히)
+        styles = [
+            {'selector': 'thead', 'props': [('display', 'none')]},
+
+            # 헤더 1·2·3행
+            {
+                'selector': 'tbody tr:nth-child(1) td',
+                'props': [('text-align', 'center'),
+                        ('padding', '4px 6px'),
+                        ('font-weight', '600')]
+            },
+            {
+                'selector': 'tbody tr:nth-child(2) td',
+                'props': [('text-align', 'center'),
+                        ('padding', '8px 6px'),
+                        ('font-weight', '600')]
+            },
+            {
+                'selector': 'tbody tr:nth-child(3) td',
+                'props': [('text-align', 'center'),
+                        ('padding', '10px 6px'),
+                        ('font-weight', '600')]
+            },
+
+            # 1열(spacer)은 얇게
+            {
+                'selector': 'tbody td:nth-child(1)',
+                'props': [('width', '8px'), ('border-right', '0')]
+            },
+
+            # 본문: 4행 이후
+            {
+                'selector': 'tbody tr:nth-child(n+4) td',
+                'props': [('line-height', '1.4'),
+                        ('padding', '6px 8px'),
+                        ('text-align', 'right')]
+            },
+            {
+                # 구분2, 구분3 열은 왼쪽 정렬
+                'selector': 'tbody tr:nth-child(n+4) td:nth-child(2), tbody tr:nth-child(n+4) td:nth-child(3)',
+                'props': [('text-align', 'left')]
+            },
+        ]
+
+
+        display_styled_df(
+            disp_vis,
+            styles=styles,
+            already_flat=True,
+        )
+        display_memo('f_77', this_year, current_month)
+
+
+    except Exception as e:
+        st.error(f"재고자산 현황 태국법인 표 생성 중 오류: {e}")
+
+    st.divider()
+
+
+
 
 
 # Footer
