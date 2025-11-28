@@ -2651,8 +2651,7 @@ def create_pl_separate_hq(year: int, month: int, data: pd.DataFrame) -> pd.DataF
     - 판매량은 '톤' 그대로
     - 퍼센트는 (이익/매출액)*100
     """
-    import numpy as np
-    import pandas as pd
+
 
     money_metrics = ["매출액", "영업이익", "순금융비용", "경상이익"]
 
@@ -2789,7 +2788,7 @@ def create_pl_separate_hq(year: int, month: int, data: pd.DataFrame) -> pd.DataF
     return out
 
 
-
+##### 실적요약 품목손익(별도) #####
 
 def create_item_pl_table_simple(
     year: int,
@@ -3016,6 +3015,10 @@ def create_item_pl_from_flat(
     out.at["%(경상)", "상품 등"] = ""
 
     return out
+
+
+
+
 
 ## 수정원가기준 손익 (별도)
 import pandas as pd
@@ -4292,11 +4295,6 @@ def create_sales_plan_vs_actual(year: int, month: int, data: pd.DataFrame) -> pd
 
 
 ##### 손익 분석 #####
-
-# modules.py
-import pandas as pd
-import numpy as np
-import re
 
 # =========================
 # 공통 유틸
@@ -7448,7 +7446,7 @@ def create_bs_from_company(
 
 
 
-def create_profit_month_block_table(df_raw: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
+def create_abroad_profit_month_block_table(df_raw: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
     df = df_raw.copy()
 
     # ===== 공통 전처리 =====
@@ -7462,11 +7460,54 @@ def create_profit_month_block_table(df_raw: pd.DataFrame, year: int, month: int)
     df["연도"] = pd.to_numeric(df["연도"], errors="coerce").astype("Int64")
 
     def _parse_month(m):
-        m = str(m)
-        if "월누적" in m:
-            return int(m.replace("월누적", "")), True
-        else:
-            return int(m), False
+        """
+        '월' 컬럼 파싱:
+        - '3월누적' -> (3, True)
+        - '3월'     -> (3, False)
+        - '3'       -> (3, False)
+        - nan / 'nan' / 빈값 / 이상한 값 -> (np.nan, False)
+        """
+        # 1) NaN 자체인 경우
+        if pd.isna(m):
+            return np.nan, False
+
+        s = str(m).strip()
+
+        # 2) 'nan', 'NaN', 빈 문자열 처리
+        if s == "" or s.lower() == "nan":
+            return np.nan, False
+
+        # 3) "월누적" 포함 케이스
+        if "월누적" in s:
+            num_part = s.replace("월누적", "")
+            num_part = re.sub(r"[^0-9]", "", num_part)  # 혹시 공백/기타 문자 섞여 있으면 숫자만 추출
+            if num_part == "":
+                return np.nan, True
+            try:
+                return int(num_part), True
+            except ValueError:
+                return np.nan, True
+
+        # 4) 일반 "월" 표기 (예: '11월', ' 11 월 ')
+        if "월" in s:
+            num_part = s.replace("월", "")
+            num_part = re.sub(r"[^0-9]", "", num_part)
+            if num_part == "":
+                return np.nan, False
+            try:
+                return int(num_part), False
+            except ValueError:
+                return np.nan, False
+
+        # 5) 그냥 숫자라고 가정 ('11' 같은 케이스)
+        num_part = re.sub(r"[^0-9]", "", s)
+        if num_part == "":
+            return np.nan, False
+        try:
+            return int(num_part), False
+        except ValueError:
+            return np.nan, False
+
 
     tmp = df["월"].apply(_parse_month)
     df["월_num"] = tmp.apply(lambda x: x[0])
