@@ -1198,7 +1198,7 @@ with t1:
         st.markdown("<h4>4) 회전일 (연결)</h4>", unsafe_allow_html=True)
 
         try:
-            file_name = st.secrets["sheets"]["f_4"]   # secrets.toml에 f_4 등록
+            file_name = st.secrets["sheets"]["f_4"] 
             raw = pd.read_csv(file_name, dtype=str)
 
             # 최신 modules 반영
@@ -1211,7 +1211,7 @@ with t1:
                 data=raw
             )  
 
-            # ─ 표시용 포맷: 소수1자리, 음수는 그대로(괄호 X) ─
+
             def fmt1(x):
                 try:
                     v = float(x)
@@ -1221,7 +1221,6 @@ with t1:
 
             disp = snap.copy().applymap(fmt1)
 
-            # ─ 가짜 2단 헤더(thead 숨기고 tbody 상단 2행으로 만듦) ─
             disp = disp.reset_index()            
             SP = "__spacer__"
             disp.insert(0, SP, "")                 
@@ -1249,7 +1248,6 @@ with t1:
             hdr1[right_group_start] = "전월비"
 
             hdr2[1] = '구분'  # 2열(스페이서 다음) 구분 표시
-            # 하부 소제목 채우기
             for j, name in enumerate(sub_order):
                 hdr2[left_group_start + j] = name
                 hdr2[right_group_start + j] = name
@@ -1392,15 +1390,21 @@ with t1:
 
 
     with col_right:
+
+
         try:
             st.markdown("<h4>5) ROE</h4>", unsafe_allow_html=True)
-            st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 백만원]</div>", unsafe_allow_html=True)
-        
+            st.markdown(
+                "<div style='text-align:left; font-size:13px; color:#666;'>[단위: 백만원]</div>",
+                unsafe_allow_html=True
+            )
+
             file_name = st.secrets["sheets"]["f_5"]  
             raw = pd.read_csv(file_name, dtype=str)
 
             import importlib
-            importlib.invalidate_caches(); importlib.reload(modules)
+            importlib.invalidate_caches()
+            importlib.reload(modules)
 
             base = modules.create_roe_table(
                 year=year,
@@ -1408,52 +1412,53 @@ with t1:
                 data=raw
             )
 
-            cols_all = base.columns.tolist()
-            disp = base.copy()
 
-            def fmt_roe(x):
-                try:
-                    return "" if pd.isna(x) else f"{float(x):.1f}%"
-                except Exception:
-                    s = str(x).strip()
-                    return s if s.endswith("%") else s
-
-            def fmt_amt(x):
-                try:
-                    return "" if pd.isna(x) else f"{int(round(float(x))):,}"
-                except Exception:
-                    return x
-
-            # 인덱스 키 탐색
-            roe_key = "ROE*" if "ROE*" in disp.index else next((i for i in disp.index if "ROE" in str(i)), None)
-            ni_key  = "당기순이익*" if "당기순이익*" in disp.index else next((i for i in disp.index if "당기순이익" in str(i)), None)
-
-            if roe_key is not None:
-                disp.loc[roe_key, cols_all] = disp.loc[roe_key, cols_all].apply(fmt_roe)
-            if ni_key is not None:
-                disp.loc[ni_key, cols_all] = disp.loc[ni_key, cols_all].apply(fmt_amt)
-            disp = disp.reset_index().rename(columns={"index": "구분"})
+            disp = base.reset_index().rename(columns={"index": "구분"})
 
             styles = [
-                {'selector': 'thead th', 'props': [('text-align','center'), ('padding','10px 8px'), ('font-weight','600')]},
-                {'selector': 'tbody td', 'props': [('padding','8px 10px'), ('text-align','right')]},
-                {'selector': 'tbody td:nth-child(1)', 'props': [('text-align','left')]},   # '구분' 좌정렬
+                {
+                    'selector': 'thead th',
+                    'props': [
+                        ('text-align','center'),
+                        ('padding','10px 8px'),
+                        ('font-weight','600')
+                    ]
+                },
+                {
+                    'selector': 'tbody td',
+                    'props': [
+                        ('padding','8px 10px'),
+                        ('text-align','right')
+                    ]
+                },
+                {
+                    # '구분' 컬럼 좌정렬
+                    'selector': 'tbody td:nth-child(1)',
+                    'props': [('text-align','left')]
+                },
             ]
 
             display_styled_df(
                 disp,
                 styles=styles,
                 highlight_cols=None,
-                already_flat=True  # 이미 평평한 표
+                already_flat=True  
             )
 
-            st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>* ROE = 당기순이익/ 자본총계, 연결기준</div>", unsafe_allow_html=True)
-            st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>* 유효법인세율 20% 반영</div>", unsafe_allow_html=True)
-        
+            st.markdown(
+                "<div style='text-align:left; font-size:13px; color:#666;'>* ROE = 당기순이익/ 자본총계, 연결기준</div>",
+                unsafe_allow_html=True
+            )
+            st.markdown(
+                "<div style='text-align:left; font-size:13px; color:#666;'>* 유효법인세율 20% 반영</div>",
+                unsafe_allow_html=True
+            )
+
             display_memo('f_5', year, month)
-        
+
         except Exception as e:
             st.error(f"ROE 표 생성 중 오류: {e}")
+
 
     # ─ 가로 스크롤 래퍼 닫기 ─
     st.markdown(
@@ -3440,49 +3445,6 @@ with t3:
 
 
 
-
-
-
-
-
-
-
-
-
-
-# ---------------------------------------------------------------
-
-
-# =========================
-
-
-
-
-# =========================
-# 주요경영지표(본사)
-# =========================
-# with t2:
-#     pass
-
-# =========================
-
-# Footer
-# =========================
-
-
-
-
-# =========================
-# 주요경영지표(본사)
-# =========================
-# with t2:
-#     pass
-
-# =========================
-# 연간사업계획
-# =========================
-# with t3:
-#     pass
 # =========================
 # Footer
 # =========================
