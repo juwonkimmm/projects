@@ -161,6 +161,7 @@ def update_report_form(year, month):
 
     return df.fillna(0)
 
+
 # ---------------------------------------------
 # 등급별 판매구성
 # ---------------------------------------------
@@ -7714,8 +7715,6 @@ def create_abroad_profit_month_block_table(df_raw: pd.DataFrame, year: int, mont
 
 
 ##### 해외법인실적 재고자산 현황 #####
-
-import pandas as pd
 from typing import List
 
 
@@ -7920,3 +7919,643 @@ def create_inv_table_from_company(
 
     return res
 
+
+
+##### 해외법인실적 부적합 및 장기재고 현황 #####
+from typing import List
+
+
+def create_defect_longinv_table_from_company(
+    year: int,
+    month: int,
+    data: pd.DataFrame,
+    company_name: str,
+) -> pd.DataFrame:
+
+
+    required_cols = ['구분1', '구분2', '구분3', '구분4', '연도', '월', '실적']
+
+
+    # 1) 회사 기준 필터링
+    df_src = data.copy()
+    df_src['구분1'] = df_src['구분1'].astype(str).str.strip()
+    df_src = df_src[df_src['구분1'] == str(company_name).strip()].copy()
+
+
+    # 2) 타입 정리
+    df_src['연도'] = df_src['연도'].astype(str).str.strip().astype(int)
+    df_src['월'] = df_src['월'].astype(str).str.strip().astype(int)
+    df_src['실적'] = (
+        df_src['실적']
+        .astype(str)
+        .str.replace(',', '', regex=False)
+        .str.strip()
+    )
+    df_src.loc[df_src['실적'] == '', '실적'] = '0'
+    df_src['실적'] = df_src['실적'].astype(float)
+
+    req_y = int(year)
+    req_m = int(month)
+
+    # 3) 연말 4개 연도 (12월 실적)
+    year_list: List[int] = [req_y - 4, req_y - 3, req_y - 2, req_y - 1]
+    year_cols: List[str] = [f"'{y % 100:02d}년말" for y in year_list]
+
+    # 4) 최근 3개월 (전전월, 전월, 선택월)
+    month_pairs: List[tuple[int, int]] = []
+    for k in (2, 1, 0):  # 전전월, 전월, 당월(선택월)
+        y = req_y
+        m = req_m - k
+        while m <= 0:
+            y -= 1
+            m += 12
+        month_pairs.append((y, m))
+
+    month_years = [y for (y, m) in month_pairs]
+    prev2_y, prev_y, used_y = month_years
+    prev2_m, prev_m, used_m = [m for (y, m) in month_pairs]
+
+    col_prev2 = f"{prev2_m}월"
+    col_prev = f"{prev_m}월"
+    col_gen = "발생"
+    col_used = "소진"
+    col_end = "기말"
+    col_rate = "증감률"
+
+    # 5) 조회 헬퍼
+    def _sum(row2: str, row3: str, y: int, m: int, kind: str | None) -> float:
+        mask = (
+            (df_src['구분2'].astype(str).str.strip() == row2)
+            & (df_src['구분3'].astype(str).str.strip() == row3)
+            & (df_src['연도'] == y)
+            & (df_src['월'] == m)
+        )
+        if kind is not None:
+            mask &= df_src['구분4'].astype(str).str.strip().eq(kind)
+        return float(df_src.loc[mask, '실적'].sum())
+
+    rows: list[dict] = []
+
+    defect_cats = ['재공', 'B급', 'C급', 'D급', 'D2급', 'X급']
+    long_cats = ['원재료', '재공', '제품']
+
+    # 6) 기본 행 생성 함수 (부적합/장기 공통)
+    def _build_base_row(inv_type: str, cat: str) -> dict:
+        row: dict = {'구분2': inv_type, '구분3': cat}
+
+        # 연말 4개 (12월 실적)
+        for y, col in zip(year_list, year_cols):
+            row[col] = _sum(inv_type, cat, y, 12, '실적')
+
+        # 전전월, 전월 (실적 = 기말로 사용)
+        (y2, m2), (y1, m1), (yu, mu) = month_pairs
+        row[col_prev2] = _sum(inv_type, cat, y2, m2, '실적')
+        row[col_prev] = _sum(inv_type, cat, y1, m1, '실적')
+
+        # 선택월 : 발생/소진
+        gen = _sum(inv_type, cat, yu, mu, '발생')
+        used = _sum(inv_type, cat, yu, mu, '소진')
+        row[col_gen] = gen
+        row[col_used] = used
+
+        prev_val = row[col_prev]
+        end_val = prev_val + gen - used
+        row[col_end] = end_val
+        row[col_rate] = (end_val / prev_val - 1) * 100.0 if prev_val != 0 else None
+
+        return row
+
+    # 7) 부적합재고 세부행
+    defect_rows = [_build_base_row('부적합재고', c) for c in defect_cats]
+    rows.extend(defect_rows)
+
+    # 8) 부적합재고 - 제품 = B급+C급+D급+D2급+X급
+    prod_row: dict = {'구분2': '부적합재고', '구분3': '제품'}
+    sum_targets = ['B급', 'C급', 'D급', 'D2급', 'X급']
+
+    for col in year_cols + [col_prev2, col_prev, col_gen, col_used, col_end]:
+        prod_row[col] = float(
+            sum(r[col] for r in defect_rows if r['구분3'] in sum_targets)
+        )
+
+    prev_val = prod_row[col_prev]
+    end_val = prod_row[col_end]
+    prod_row[col_rate] = (end_val / prev_val - 1) * 100.0 if prev_val != 0 else None
+    rows.append(prod_row)
+
+    # 9) 부적합재고 소계 = 재공+B급+C급+D급+D2급+X급
+    defect_total: dict = {'구분2': '부적합재고', '구분3': '부적합재고 소계'}
+
+    for col in year_cols + [col_prev2, col_prev, col_gen, col_used, col_end]:
+        defect_total[col] = float(sum(r[col] for r in defect_rows))
+
+    prev_val = defect_total[col_prev]
+    end_val = defect_total[col_end]
+    defect_total[col_rate] = (
+        (end_val / prev_val - 1) * 100.0 if prev_val != 0 else None
+    )
+    rows.append(defect_total)
+
+    # 10) 장기재고 기본행
+    long_rows = [_build_base_row('장기재고', c) for c in long_cats]
+    rows.extend(long_rows)
+
+    # 11) 장기재고 소계 = 원재료+재공+제품
+    long_total: dict = {'구분2': '장기재고', '구분3': '장기재고 소계'}
+
+    for col in year_cols + [col_prev2, col_prev, col_gen, col_used, col_end]:
+        long_total[col] = float(sum(r[col] for r in long_rows))
+
+    prev_val = long_total[col_prev]
+    end_val = long_total[col_end]
+    long_total[col_rate] = (
+        (end_val / prev_val - 1) * 100.0 if prev_val != 0 else None
+    )
+    rows.append(long_total)
+
+    # 12) DataFrame 변환 + 정렬
+    res = pd.DataFrame(rows)
+
+    # 구분 순서 강제
+    desired_order = [
+        ('부적합재고', '재공'),
+        ('부적합재고', 'B급'),
+        ('부적합재고', 'C급'),
+        ('부적합재고', 'D급'),
+        ('부적합재고', 'D2급'),
+        ('부적합재고', 'X급'),
+        ('부적합재고', '제품'),
+        ('부적합재고', '부적합재고 소계'),
+        ('장기재고', '원재료'),
+        ('장기재고', '재공'),
+        ('장기재고', '제품'),
+        ('장기재고', '장기재고 소계'),
+    ]
+    res['__order__'] = res.apply(
+        lambda r: desired_order.index((r['구분2'], r['구분3'])),
+        axis=1,
+    )
+    res = res.sort_values('__order__').drop(columns='__order__')
+
+    col_order = (
+        ['구분2', '구분3']
+        + year_cols
+        + [col_prev2, col_prev, col_gen, col_used, col_end, col_rate]
+    )
+    res = res[col_order].set_index(['구분2', '구분3'])
+
+    # 13) 메타 정보
+    res.attrs['company'] = company_name
+    res.attrs['base_year'] = req_y
+
+    res.attrs['used_year'] = used_y
+    res.attrs['used_month'] = used_m
+
+    res.attrs['prev_year'] = prev_y
+    res.attrs['prev_month'] = prev_m
+
+    res.attrs['prev2_year'] = prev2_y
+    res.attrs['prev2_month'] = prev2_m
+
+    return res
+
+
+##### 해외법인실적 연령별 재고현황 #####
+
+import pandas as pd
+from typing import List
+
+
+def create_age_table_from_company(
+    year: int,
+    month: int,
+    data: pd.DataFrame,
+    company_name: str,
+) -> pd.DataFrame:
+
+
+    # 0) 컬럼 체크
+    required_cols = ['구분1', '구분2', '구분3', '구분4', '연도', '월', '실적']
+    for c in required_cols:
+        if c not in data.columns:
+            raise ValueError(f"'{c}' 컬럼이 없습니다. 원본 스키마를 확인하세요.")
+
+    # 1) 회사 필터
+    df_src = data.copy()
+    df_src['구분1'] = df_src['구분1'].astype(str).str.strip()
+    df_src = df_src[df_src['구분1'] == str(company_name).strip()].copy()
+    if df_src.empty:
+        raise ValueError(f"회사 '{company_name}' 데이터가 없습니다.")
+
+    # 2) 타입 정리
+    df_src['연도'] = df_src['연도'].astype(str).str.replace(' ', '', regex=False).astype(int)
+    df_src['월'] = df_src['월'].astype(str).str.replace(' ', '', regex=False).astype(int)
+
+    df_src['실적'] = (
+        df_src['실적']
+        .astype(str)
+        .str.replace(',', '', regex=False)
+        .str.replace(' ', '', regex=False)
+    )
+    df_src.loc[df_src['실적'] == '', '실적'] = '0'
+    df_src['실적'] = df_src['실적'].astype(float)
+
+    req_y = int(year)
+    req_m = int(month)
+
+    # 3) 연말 4개 연도
+    year_list: List[int] = [req_y - 4, req_y - 3, req_y - 2, req_y - 1]
+    year_cols: List[str] = [f"'{y % 100:02d}년말" for y in year_list]
+
+    # 4) 최근 3개월 (전전월, 전월, 선택월)
+    month_pairs: List[tuple[int, int]] = []
+    for k in (2, 1, 0):  # 전전월, 전월, 선택월
+        y = req_y
+        m = req_m - k
+        while m <= 0:
+            y -= 1
+            m += 12
+        month_pairs.append((y, m))
+
+    month_years = [y for (y, m) in month_pairs]
+    month_list = [m for (y, m) in month_pairs]
+    prev2_y, prev_y, used_y = month_years
+    prev2_m, prev_m, used_m = month_list
+
+    col_prev2 = f"{prev2_m}월"
+    col_prev = f"{prev_m}월"
+    col_used = f"{used_m}월"
+    col_money = "금액"
+    col_rate = "증감률"
+
+    # 5) 합계 헬퍼
+    def _sum_qty(
+        material: str,
+        bucket: str,
+        y: int,
+        m: int,
+        unit: str,  # '중량' or '금액'
+    ) -> float:
+        mask = (
+            (df_src['구분2'].astype(str).str.strip() == material)
+            & (df_src['구분3'].astype(str).str.strip() == bucket)
+            & (df_src['구분4'].astype(str).str.strip() == unit)
+            & (df_src['연도'] == y)
+            & (df_src['월'] == m)
+        )
+        return float(df_src.loc[mask, '실적'].sum())
+
+    materials = ['원재료', '재공', '제품']
+    buckets = ['3개월 이하', '3개월 초과', '6개월 초과', '1년 초과']
+
+    rows: list[dict] = []
+    base_rows: list[dict] = []
+
+    # 6) 원재료/재공/제품 × 월령 기본 행
+    for mat in materials:
+        for bucket in buckets:
+            row: dict = {'구분2': mat, '구분3': bucket}
+
+            # 연말 4개 (중량)
+            for y, col in zip(year_list, year_cols):
+                row[col] = _sum_qty(mat, bucket, y, 12, '중량')
+
+            # 전전월 / 전월 / 선택월 (중량)
+            (y2, m2), (y1, m1), (yu, mu) = month_pairs
+            row[col_prev2] = _sum_qty(mat, bucket, y2, m2, '중량')
+            row[col_prev]  = _sum_qty(mat, bucket, y1, m1, '중량')
+            row[col_used]  = _sum_qty(mat, bucket, yu, mu, '중량')
+
+            # 선택월 금액
+            row[col_money] = _sum_qty(mat, bucket, yu, mu, '금액')
+
+            prev_val = row[col_prev]
+            used_val = row[col_used]
+            row[col_rate] = (used_val / prev_val - 1) * 100.0 if prev_val != 0 else None
+
+            base_rows.append(row)
+            rows.append(row)
+
+        # 7) 각 소재 소계 행 (구분3='소계')
+        mat_rows = [r for r in base_rows if r['구분2'] == mat]
+        total_row: dict = {'구분2': mat, '구분3': '소계'}
+        numeric_cols = year_cols + [col_prev2, col_prev, col_used, col_money]
+
+        for col in numeric_cols:
+            total_row[col] = float(sum(r[col] for r in mat_rows))
+
+        prev_val = total_row[col_prev]
+        used_val = total_row[col_used]
+        total_row[col_rate] = (used_val / prev_val - 1) * 100.0 if prev_val != 0 else None
+
+        rows.append(total_row)
+
+    # 8) 전체 6개월 이하 / 6개월 초과 / 합계 (구분2='합계')
+    numeric_cols = year_cols + [col_prev2, col_prev, col_used, col_money]
+
+    def _total_row(bucket_label: str, target_buckets: list[str]) -> dict:
+        t: dict = {'구분2': '합계', '구분3': bucket_label}
+        targets = [
+            r for r in base_rows
+            if r['구분3'] in target_buckets
+        ]
+        for col in numeric_cols:
+            t[col] = float(sum(r[col] for r in targets))
+        prev_val = t[col_prev]
+        used_val = t[col_used]
+        t[col_rate] = (used_val / prev_val - 1) * 100.0 if prev_val != 0 else None
+        return t
+
+    row_6less = _total_row('6개월 이하', ['3개월 이하', '3개월 초과'])
+    row_6over = _total_row('6개월 초과', ['6개월 초과', '1년 초과'])
+    row_total = _total_row('합계', ['3개월 이하', '3개월 초과', '6개월 초과', '1년 초과'])
+
+    rows.extend([row_6less, row_6over, row_total])
+
+    # 9) DataFrame 변환 + 행 순서 고정
+    res = pd.DataFrame(rows)
+
+    order_spec = [
+        ('원재료', '3개월 이하'),
+        ('원재료', '3개월 초과'),
+        ('원재료', '6개월 초과'),
+        ('원재료', '1년 초과'),
+        ('원재료', '소계'),
+        ('재공',   '3개월 이하'),
+        ('재공',   '3개월 초과'),
+        ('재공',   '6개월 초과'),
+        ('재공',   '1년 초과'),
+        ('재공',   '소계'),
+        ('제품',   '3개월 이하'),
+        ('제품',   '3개월 초과'),
+        ('제품',   '6개월 초과'),
+        ('제품',   '1년 초과'),
+        ('제품',   '소계'),
+        ('합계',   '6개월 이하'),
+        ('합계',   '6개월 초과'),
+        ('합계',   '합계'),
+    ]
+    order_map = {key: i for i, key in enumerate(order_spec)}
+    res['__order__'] = res.apply(
+        lambda r: order_map.get((r['구분2'], r['구분3']), 999),
+        axis=1,
+    )
+    res = res.sort_values('__order__').drop(columns='__order__')
+
+    col_order = ['구분2', '구분3'] + year_cols + [col_prev2, col_prev, col_used, col_money, col_rate]
+    res = res[col_order].set_index(['구분2', '구분3'])
+
+    # 10) 메타 정보
+    res.attrs['company'] = company_name
+    res.attrs['base_year'] = req_y
+
+    res.attrs['used_year'] = used_y
+    res.attrs['used_month'] = used_m
+
+    res.attrs['prev_year'] = prev_y
+    res.attrs['prev_month'] = prev_m
+
+    res.attrs['prev2_year'] = prev2_y
+    res.attrs['prev2_month'] = prev2_m
+
+    return res
+
+
+import pandas as pd
+from typing import List
+
+
+def create_ar_status_table_from_company(
+    year: int,
+    month: int,
+    data: pd.DataFrame,
+    company_name: str,
+) -> pd.DataFrame:
+    """
+    매출채권 현황 표 생성.
+
+    데이터 스키마
+    ------------
+    data 컬럼:
+        ['구분1','구분2','구분3','구분4','연도','월','실적'] 가정
+        - 구분1 : 회사명
+        - 구분2 : 매출액(세금포함), 정상채권, 3개월 이하, 3개월 초과,
+                  6개월 초과, 회수불능, 매출채권기일, 정상채권기일
+        - 구분3, 구분4 는 사용 안 함 (비어 있어도 됨)
+
+    열 구조
+    -------
+    'YY년말' 4개 : (year-4) ~ (year-1)년 12월 (연말)
+    전월         : 기준월의 전월
+    기준월       : year, month
+
+    행 구조 (구분 순서 고정)
+    ------------------------
+    매출액(세금포함)
+    정상채권
+    3개월 이하
+    3개월 초과
+    6개월 초과
+    회수불능
+    기준초과채권          = 3개월 이하 + 3개월 초과 + 6개월 초과 + 회수불능
+    매출채권 계           = 정상채권 + 기준초과채권
+    초과채권 비율(%)      = 기준초과채권 / 매출채권 계 * 100
+    초과채권 이자손실     = 기준초과채권 * 0.05 / 12
+    매출채권기일
+    정상채권기일
+    차이                 = 매출채권기일 - 정상채권기일
+
+    attrs
+    -----
+    res.attrs['company']      = company_name
+    res.attrs['base_year']    = year
+    res.attrs['used_year']    = 기준월 연도
+    res.attrs['used_month']   = 기준월 월
+    res.attrs['prev_year']    = 전월 연도
+    res.attrs['prev_month']   = 전월 월
+    res.attrs['prev2_year']   = None (미사용, 일관성 위해 생략)
+    res.attrs['prev2_month']  = None
+    """
+
+    # 0) 기본 컬럼 체크
+    required_cols = ['구분1', '구분2', '연도', '월', '실적']
+    for c in required_cols:
+        if c not in data.columns:
+            raise ValueError(f"'{c}' 컬럼이 없습니다. 원본 스키마를 확인하세요.")
+
+    # 1) 회사 기준 필터링
+    df_src = data.copy()
+    df_src['구분1'] = df_src['구분1'].astype(str).str.strip()
+    df_src = df_src[df_src['구분1'] == str(company_name).strip()].copy()
+    if df_src.empty:
+        raise ValueError(f"회사 '{company_name}' 데이터가 없습니다.")
+
+    # 2) 타입 정리
+    df_src['연도'] = (
+        df_src['연도']
+        .astype(str)
+        .str.replace(' ', '', regex=False)
+        .astype(int)
+    )
+    df_src['월'] = (
+        df_src['월']
+        .astype(str)
+        .str.replace(' ', '', regex=False)
+        .astype(int)
+    )
+
+    df_src['실적'] = (
+        df_src['실적']
+        .astype(str)
+        .str.replace(',', '', regex=False)
+        .str.replace(' ', '', regex=False)
+    )
+    df_src.loc[df_src['실적'] == '', '실적'] = '0'
+    df_src['실적'] = df_src['실적'].astype(float)
+
+    req_y = int(year)
+    req_m = int(month)
+
+    # 3) 연말 4개 연도 (12월을 연말로 사용)
+    year_list: List[int] = [req_y - 4, req_y - 3, req_y - 2, req_y - 1]
+    year_cols: List[str] = [
+        f"'{str(y % 100).zfill(2)}년말" for y in year_list
+    ]
+
+    # 4) 전월 / 기준월
+    month_pairs: List[tuple[int, int]] = []
+    for k in (1, 0):  # 전월, 기준월
+        y = req_y
+        m = req_m - k
+        while m <= 0:
+            y -= 1
+            m += 12
+        month_pairs.append((y, m))
+
+    (prev_y, prev_m), (used_y, used_m) = month_pairs
+    col_prev = f"{prev_m}월"
+    col_used = f"{used_m}월"
+
+    # 5) 합계 헬퍼
+    def _sum(kind: str, y: int, m: int) -> float:
+        mask = (
+            (df_src['구분2'].astype(str).str.strip() == kind)
+            & (df_src['연도'] == y)
+            & (df_src['월'] == m)
+        )
+        return float(df_src.loc[mask, '실적'].sum())
+
+    base_cats = [
+        '매출액(세금포함)',
+        '정상채권',
+        '3개월 이하',
+        '3개월 초과',
+        '6개월 초과',
+        '회수불능',
+        '매출채권기일',
+        '정상채권기일',
+    ]
+
+    rows: list[dict] = []
+    base_rows: dict[str, dict] = {}
+
+    # 6) 기본 행 작성
+    for cat in base_cats:
+        row: dict = {'구분': cat}
+
+        # 연말 4개 (12월)
+        for y, col in zip(year_list, year_cols):
+            row[col] = _sum(cat, y, 12)
+
+        # 전월 / 기준월
+        row[col_prev] = _sum(cat, prev_y, prev_m)
+        row[col_used] = _sum(cat, used_y, used_m)
+
+        rows.append(row)
+        base_rows[cat] = row
+
+    period_cols = year_cols + [col_prev, col_used]
+
+    # 7) 기준초과채권 = 3개월 이하 + 3개월 초과 + 6개월 초과 + 회수불능
+    crit_name = '기준초과채권'
+    crit_row: dict = {'구분': crit_name}
+    crit_sources = ['3개월 이하', '3개월 초과', '6개월 초과', '회수불능']
+
+    for col in period_cols:
+        crit_row[col] = float(sum(base_rows[s][col] for s in crit_sources))
+
+    rows.append(crit_row)
+
+    # 8) 매출채권 계 = 정상채권 + 기준초과채권
+    total_name = '매출채권 계'
+    total_row: dict = {'구분': total_name}
+    for col in period_cols:
+        total_row[col] = float(base_rows['정상채권'][col] + crit_row[col])
+
+    rows.append(total_row)
+
+    # 9) 초과채권 비율(%) = 기준초과채권 / 매출채권 계 * 100
+    ratio_name = '초과채권 비율(%)'
+    ratio_row: dict = {'구분': ratio_name}
+    for col in period_cols:
+        denom = total_row[col]
+        ratio_row[col] = (crit_row[col] / denom * 100.0) if denom != 0 else None
+
+    rows.append(ratio_row)
+
+    # 10) 초과채권 이자손실 = 기준초과채권 * 0.05 / 12
+    loss_name = '초과채권 이자손실'
+    loss_row: dict = {'구분': loss_name}
+    for col in period_cols:
+        loss_row[col] = crit_row[col] * 0.05 / 12.0
+
+    rows.append(loss_row)
+
+    # 11) 차이 = 매출채권기일 - 정상채권기일
+    diff_name = '차이'
+    diff_row: dict = {'구분': diff_name}
+    for col in period_cols:
+        diff_row[col] = base_rows['매출채권기일'][col] - base_rows['정상채권기일'][col]
+
+    # 매출채권기일 / 정상채권기일 행은 이미 base_rows에 들어가 있으므로
+    rows.append(diff_row)
+
+    # 12) DataFrame 변환 및 행 순서 정리
+    res = pd.DataFrame(rows)
+
+    ordered = [
+        '매출액(세금포함)',
+        '정상채권',
+        '3개월 이하',
+        '3개월 초과',
+        '6개월 초과',
+        '회수불능',
+        '기준초과채권',
+        '매출채권 계',
+        '초과채권 비율(%)',
+        '초과채권 이자손실',
+        '매출채권기일',
+        '정상채권기일',
+        '차이',
+    ]
+    res['__order__'] = res['구분'].map({n: i for i, n in enumerate(ordered)})
+    res = res.sort_values('__order__').drop(columns='__order__')
+
+    col_order = ['구분'] + year_cols + [col_prev, col_used]
+    res = res[col_order].set_index('구분')
+
+    # 13) 메타 정보 설정
+    res.attrs['company'] = company_name
+    res.attrs['base_year'] = req_y
+
+    res.attrs['used_year'] = used_y
+    res.attrs['used_month'] = used_m
+
+    res.attrs['prev_year'] = prev_y
+    res.attrs['prev_month'] = prev_m
+
+    # 전전월은 사용하지 않지만 attr 형식 맞추려면 None 등으로 둘 수 있음
+    res.attrs['prev2_year'] = None
+    res.attrs['prev2_month'] = None
+
+    return res
