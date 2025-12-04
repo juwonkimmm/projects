@@ -56,55 +56,96 @@ def get_year_end_index(year):
     date_index = pd.date_range(end=end_date, periods=5, freq='Y')
     return [f"{date.year % 100}년말" for date in date_index]
 
+import re
+import pandas as pd
+
 def create_df(year, month, data, mean="True", prev_year=2, prev_month=4):
-    months = get_month_index(year, month)
-    years = get_year_mean_index(year) if mean == "True" else get_year_end_index(year)
+    # 1) 컬럼 인덱스 생성 ----------------------------------------------------
+    months = get_month_index(year, month)  # 예: ['24년 11월', '24년 12월', '25년 1월', ...]
+    years  = get_year_mean_index(year) if mean == "True" else get_year_end_index(year)
     columns = years[-prev_year:] + months[-prev_month:]
 
+    # 2) 행 인덱스(구분1, 구분2 등) 생성 ------------------------------------
     categories = [col for col in data.columns if '구분' in col][-2:]
     index = data[categories].drop_duplicates()
     indexes = pd.MultiIndex.from_frame(index, names=['', ''])
 
     df = pd.DataFrame(0, index=indexes, columns=columns)
+    n = len(df.index)   # df 행 개수
 
-    n = len(df.index)  # df 행 개수 (지금 에러 로그상 3행)
-
+    # 3) 각 컬럼별로 data에서 값 채우기 -------------------------------------
     for col in df.columns:
-        # 1) 어떤 타입의 컬럼인지 판단
-        if '월평균' in col:
-            # 선택한 연도의 월평균
-            mask = (data['연도'] == year) & (data['월'] == '월평균')
+        col_label = str(col)   # 혹시 숫자/튜플이어도 문자열로 처리
 
-        elif '년말' in col:
-            # 선택한 연도의 12월 (년말)
-            # load_data에서 '월'을 어떻게 저장했는지에 따라 아래 둘 중 하나
-            #  - 만약 '12월' 같은 문자열이면:
-            mask = (data['연도'] == year) & (data['월'] == '12월')
-            #  - 만약 숫자 12라면:
-            # mask = (data['연도'] == year) & (data['월'] == 12)
+        # ---- 3-1. 컬럼에서 연도/월 정보 추출 --------------------------------
+        col_year = None
+        col_month = None
+        is_mean_col = ('월평균' in col_label)
+        is_yearend_col = ('년말' in col_label)
+
+        # 컬럼 문자열에서 숫자만 뽑기 (예: "'24년말" -> ['24'], "2025년 1월" -> ['2025','1'])
+        nums = re.findall(r'\d+', col_label)
+
+        if is_mean_col or is_yearend_col:
+            # 'xx년 월평균' 또는 'xx년말' 형식으로 가정
+            if nums:
+                yy = int(nums[0])
+                if yy < 100:   # '24' -> 2024 식으로 처리
+                    yy += 2000
+                col_year = yy
+            else:
+                col_year = year  # 혹시 숫자가 없으면 선택연도 fallback
+
+            col_month = 12 if is_yearend_col else None  # 연말만 12월 고정
 
         else:
-            # 일반 월 컬럼 (예: '1월', '2월', '3월' … 라고 가정)
-            # → 문자열에서 숫자만 뽑아서 월 번호로 사용
-            month_num = int(''.join(ch for ch in col if ch.isdigit()))
+            # 일반 월 컬럼 (예: '1월', '25년 1월', '2025-01' 등 숫자를 포함한다고 가정)
+            if len(nums) == 0:
+                # 숫자가 하나도 없으면 그냥 선택연도에, 월은 지정 불가 → values 없음 처리
+                col_year = year
+                col_month = None
+            elif len(nums) == 1:
+                # 숫자가 1개면 "월"이라고 보고, 연도는 선택연도 사용
+                col_year = year
+                col_month = int(nums[0])
+            else:
+                # 숫자가 2개 이상이면 앞쪽은 연도, 마지막은 월로 간주
+                yy = int(nums[0])
+                if yy < 100:
+                    yy += 2000
+                col_year = yy
+                col_month = int(nums[-1])
 
-            # load_data에서 '월'을 "1월", "2월" 이렇게 문자열로 놔두었으니:
-            month_str = f'{month_num}월'
-            mask = (data['연도'] == year) & (data['월'] == month_str)
+        # ---- 3-2. data에서 해당 연도/월의 '실적' 값 가져오기 -------------------
+        if is_mean_col:
+            # 월평균 컬럼: data['월']에 '월평균' 이라고 저장되어 있다고 가정
+            mask = (data['연도'] == col_year) & (data['월'] == '월평균')
+            values = data.loc[mask, '실적'].values
 
-            # 만약 data['월']이 숫자(1,2,3...)라면 위 대신
-            # mask = (data['연도'] == year) & (data['월'] == month_num)
+        elif is_yearend_col:
 
-        # 2) 실적 값 가져오기
-        values = data.loc[mask, '실적'].values
+            mask = (data['연도'] == col_year) & (data['월'] == '12월')
+            values = data.loc[mask, '실적'].values
 
-        # 3) df.index 길이에 맞춰 안전하게 대입
+        else:
+            # 일반 월 컬럼
+            if col_month is None:
+                values = []
+            else:
+                # data['월']이 "1월", "2월" 처럼 문자열이라고 가정
+                month_label = f"{col_month}월"
+                mask = (data['연도'] == col_year) & (data['월'] == month_label)
+                # 만약 data['월']이 숫자(1,2,3...)라면 위 대신:
+                # mask = (data['연도'] == col_year) & (data['월'] == col_month)
+                values = data.loc[mask, '실적'].values
+
+        # ---- 3-3. df 행 개수(n)에 맞게 안전하게 대입 ---------------------------
         if len(values) == 0:
-            # ✅ 해당 조건의 데이터가 하나도 없으면 0으로 채움
+            # 데이터가 하나도 없으면 전체를 0으로 (기본값 그대로)
             df.loc[:, col] = 0
 
         elif len(values) == 1:
-            # 값이 하나면 모든 행에 동일 값 브로드캐스트
+            # 값이 하나면 모든 행에 동일 값을 브로드캐스트
             df.loc[:, col] = values[0]
 
         elif len(values) == n:
@@ -112,13 +153,14 @@ def create_df(year, month, data, mean="True", prev_year=2, prev_month=4):
             df.loc[:, col] = values
 
         else:
-            # 혹시 길이가 애매하게 다를 경우(2개, 5개 등) → 잘라서/채워서 맞추기
+            # 길이가 애매하게 다르다면(2개, 5개 등): 잘라서/0으로 채워서 맞추기
             padded = list(values)[:n]
             if len(padded) < n:
                 padded += [0] * (n - len(padded))
             df.loc[:, col] = padded
 
     return df
+
 # --- 공통: 컬럼 세트 생성 유틸 ---
 def _build_defect_cols(year:int, month:int) -> list[str]:
     prev = f"{str(year-1)[-2:]}년 월평균"
@@ -338,14 +380,25 @@ def update_turnover_form(year, month):
 
     for i in df.columns[:-2]:
         if '년말' in i[1]:
-            temp = turnover[(turnover['연도'] == int('20' + i[1][:2])) & (turnover['월'] == 12)]
-            df.iloc[:-2, df.columns.get_loc(i)] = temp['실적'].values
-        else:
-            yy = int(i[0].replace("년", ""))
-            mm = int(i[1].replace("월", ""))
+            yy = int('20' + i[1][:2])
+            mm = 12
             temp = turnover[(turnover['연도'] == yy) & (turnover['월'] == mm)]
-            df[i][:-2] = temp['실적'].values
+            vals = temp['실적'].values
+            if len(vals) == 0:
+                # 해당 연도/12월 데이터 없으면 그냥 0 유지
+                continue
+            df.iloc[:-2, df.columns.get_loc(i)] = vals
+        else:
+            yy = int(i[0].replace("년", ""))   # 예: '2026' → 2026
+            mm = int(i[1].replace("월", ""))   # 예: '1월'  → 1
+            temp = turnover[(turnover['연도'] == yy) & (turnover['월'] == mm)]
+            vals = temp['실적'].values
+            if len(vals) == 0:
+                # 2026년처럼 아직 안 들어온 월이면 0 유지
+                continue
+            df.iloc[:-2, df.columns.get_loc(i)] = vals
 
+    # 단위 변환 및 합계 계산 로직은 그대로
     for r in [1, 3, 5, 7, 8]:
         df.iloc[r, :] = round(df.iloc[r, :] / 1_000_000, 0)
         df.iloc[9, :] = df.iloc[9, :] + df.iloc[r, :]
@@ -358,6 +411,7 @@ def update_turnover_form(year, month):
     df = df.fillna(0)
     df.iloc[:, -1] = df.iloc[:, -1].astype(object).apply(lambda x: f"{x}%")
     return df
+
 
 # ---------------------------------------------
 # 별첨 실적요약
