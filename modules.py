@@ -324,27 +324,106 @@ def create_psi_form(year, month):
     columns = ['원재료 입고①', '매출②', '총재고③', '출고율(②/①)', '재고율(③/②)']
     return pd.DataFrame(0, index=index, columns=columns)
 
-def update_psi_form(year, month, data):
+import pandas as pd
+
+def update_psi_form(year, month, data: pd.DataFrame):
+    # 템플릿/형식은 기존 함수 그대로 사용
     df = create_psi_form(year, month)
-    for i in df.index:
-        yy = int('20' + i.split('.')[0])
-        mm = i.split('.')[1]
-        vals = data[(data['연도'] == yy) & (data['월'] == f'{mm}월')]['실적'].to_list()
-        ship = f"{round((vals[1] / vals[0]) * 100, 1)}%" if vals[0] != 0 else "0%"
-        invt = f"{round((vals[2] / vals[1]) * 100, 1)}%" if vals[1] != 0 else "-"
-        df.loc[i] = vals + [ship, invt]
+
+    # ---- data 전처리: 연도/월 숫자로 통일 ----
+    data = data.copy()
+    data["연도"] = pd.to_numeric(data["연도"], errors="coerce")
+
+    # '1월', '01월' 같은 형식 → '1', '01' → int
+    data["월"] = (
+        data["월"]
+        .astype(str)
+        .str.replace("월", "", regex=False)
+    )
+    data["월"] = pd.to_numeric(data["월"], errors="coerce")
+
+    for idx in df.index:
+        # index 형식이 '25.01' 또는 '25.1' 같은 걸로 가정
+        part_y, part_m = idx.split(".")
+        yy = 2000 + int(part_y)   # '25' -> 2025
+        mm = int(part_m)          # '01' or '1' -> 1
+
+        # 해당 연월 데이터 가져오기
+        vals = data[(data["연도"] == yy) & (data["월"] == mm)]["실적"].tolist()
+
+        # 기대하는 구조가 [매출, 출하, 재고]라면 최소 3개를 확보
+        # 데이터 없으면 전부 0으로 채움
+        if len(vals) == 0:
+            a, b, c = 0, 0, 0
+        else:
+            # 부족한 값은 0으로 패딩
+            while len(vals) < 3:
+                vals.append(0)
+            a, b, c = vals[0], vals[1], vals[2]
+
+        # ship = 출하 / 매출
+        ship = "0%" if a == 0 else f"{round((b / a) * 100, 1)}%"
+
+        # invt = 재고 / 출하
+        if b == 0:
+            invt = "-"   # 출하가 0이면 재고 비율 의미 없음
+        else:
+            invt = f"{round((c / b) * 100, 1)}%"
+
+        # df에 값 채우기
+        df.loc[idx] = [a, b, c, ship, invt]
+
     return df
 
-def update_psi_2_form(year, month, data):
+
+import pandas as pd
+
+def update_psi_2_form(year, month, data: pd.DataFrame):
     df = create_psi_form(year, month)
-    for i in df.index:
-        yy = int('20' + i.split('.')[0])
-        mm = i.split('.')[1]
-        vals = data[(data['연도'] == yy) & (data['월'] == f'{mm}월')]['실적'].to_list()
-        ship = f"{round((vals[1] / vals[0]) * 100, 1)}%" if vals[0] != 0 else "0%"
-        invt = f"{round((vals[2] / vals[1]) * 100, 1)}%" if vals[1] != 0 else "-"
-        df.loc[i] = vals + [ship, invt]
+
+    # ---- data 전처리: 연도/월 숫자로 통일 ----
+    data = data.copy()
+    data["연도"] = pd.to_numeric(data["연도"], errors="coerce")
+
+    # '1월', '01월' 등 → '1', '01' → int
+    data["월"] = (
+        data["월"]
+        .astype(str)
+        .str.replace("월", "", regex=False)
+    )
+    data["월"] = pd.to_numeric(data["월"], errors="coerce")
+
+    for idx in df.index:
+        # index 형식이 '25.01' 또는 '25.1' 같은 걸로 가정
+        part_y, part_m = idx.split(".")
+        yy = 2000 + int(part_y)   # '25' -> 2025
+        mm = int(part_m)          # '01' or '1' -> 1
+
+        # 해당 연월 데이터 가져오기
+        vals = data[(data["연도"] == yy) & (data["월"] == mm)]["실적"].tolist()
+
+        # 기대하는 구조: [매출, 출하, 재고] 라고 가정하고 최소 3개 확보
+        if len(vals) == 0:
+            a, b, c = 0, 0, 0
+        else:
+            while len(vals) < 3:
+                vals.append(0)
+            a, b, c = vals[0], vals[1], vals[2]
+
+        # ship = 출하 / 매출
+        ship = "0%" if a == 0 else f"{round((b / a) * 100, 1)}%"
+
+        # invt = 재고 / 출하
+        if b == 0:
+            invt = "-"   # 출하가 0이면 재고비율 의미 없으니 '-'
+        else:
+            invt = f"{round((c / b) * 100, 1)}%"
+
+        # df에 값 채우기
+        df.loc[idx] = [a, b, c, ship, invt]
+
     return df
+
 
 # ---------------------------------------------
 # 재고자산 회전율
@@ -445,21 +524,30 @@ def update_performance_form(year, month):
         all_dfs[category] = df
     return all_dfs
 
-def update_monthly_claim_form(year):
+
+
+def update_monthly_claim_form():
     file_name = st.secrets['sheets']['f_47']
     claim = pd.read_csv(file_name, thousands=',')
-    claim['실적'] /= 1_000_000
-    df = pd.DataFrame(
-        0, index=claim['구분2'].unique(),
-        columns=[f"{str(y)[2:]}년" for y in claim['연도'].unique()[-5:-1]]
+
+    # 단위 변환 (원 → 백만원 등)
+    claim['실적'] = claim['실적'] / 1_000_000
+
+    # 연도 숫자형
+    claim['연도'] = pd.to_numeric(claim['연도'], errors='coerce')
+
+    # 구분2 x 연도 피벗 (평균)
+    pivot = (
+        claim
+        .groupby(['구분2', '연도'])['실적']
+        .mean()
+        .unstack('연도')            # index: 구분2, columns: 연도 (예: 2023, 2024, ...)
+        .fillna(0)                 # 데이터 없는 연도/구분2는 0
     )
-    for i in df.index:
-        result = claim.groupby(['구분2', '연도'])['실적'].mean()[i]
-        for j in df.columns:
-            yy = int("20" + j.replace("년", ""))
-            df.loc[i, j] = round(result[yy], 0)
-    df.loc['합계', :] = df.iloc[[0, 1, 2, 3, 4]].sum()
-    return df
+
+    return pivot
+
+
 
 # =========================================================
 # 생산: 전체 생산실적 (정렬 포함)
@@ -1005,6 +1093,9 @@ def format_total_production_table_for_display(df: pd.DataFrame) -> pd.DataFrame:
 ##사용량 원단위 추이 포항##
 ########################
 
+import pandas as pd
+import numpy as np
+
 def create_material_usage_table_pohang(
     year: int,
     month: int,                 # 기준 연/월 (this_year, current_month)
@@ -1020,7 +1111,8 @@ def create_material_usage_table_pohang(
     - 기준 연/월(year, month)을 포함하여 과거 window-1개월까지의 데이터 사용
       (예: year=2025, month=8, window=12 → 2024-09 ~ 2025-08)
     - 연도 컬럼이 있으면 연/월 기준으로 12개월 롤링, 없으면 같은 연도 내에서만 처리
-    - 행(item_order)은 교집합만 정렬하여 NaN 행 생성 방지
+    - **선택연월 기준 window개월에 데이터가 하나도 없으면**
+      → item_order 기준 행 + 12개월 열 구조는 그대로, 값은 전부 '-' 로 채움
     """
     required = ["구분3", "구분1", "월", "실적"]
     df = data.copy()
@@ -1029,12 +1121,19 @@ def create_material_usage_table_pohang(
     if missing:
         raise ValueError(f"필수 컬럼 누락: {missing} (필요: {required})")
 
+    # item_order 기본값
+    if item_order is None:
+        item_order = ["열처리用LNG(㎥)", "질소(㎥)", "염산(kg)", "수소(㎥)", "산세용LNG(㎥)", "피막보급제(kg)"]
+
     # 1) 공장 필터
     q = df[df["구분3"].astype(str).str.contains(plant_name, na=False)].copy()
 
     # 2) 숫자화
     q["월"] = pd.to_numeric(q["월"], errors="coerce")
     q["실적"] = pd.to_numeric(q["실적"], errors="coerce")
+
+    # 전체 기간에 데이터가 없을 때를 구분하기 위한 플래그
+    no_data_all = False
 
     # ==============================
     # A. 연도 컬럼이 있는 경우: 연/월 기준 '진짜' 12개월 롤링
@@ -1054,28 +1153,38 @@ def create_material_usage_table_pohang(
         # 범위 필터
         q = q[(q["ym_key"] >= start_key) & (q["ym_key"] <= end_key)].copy()
 
-        if q.empty:
-            raise ValueError("지정한 12개월 범위에 해당하는 데이터가 없습니다.")
-
-        # 피벗: 컬럼 = ym_key
-        piv = q.pivot_table(index="구분1", columns="ym_key", values="실적", aggfunc="sum")
-
-        # 전체 12개월 키 생성 (데이터 없으면 NaN 컬럼으로 채움)
         full_keys = list(range(start_key, end_key + 1))
-        for k in full_keys:
-            if k not in piv.columns:
-                piv[k] = np.nan
 
-        piv = piv[full_keys]
+        if q.empty:
+            # ★ 12개월 전체에 데이터가 1건도 없는 경우 → '-' 템플릿
+            no_data_all = True
 
-        # 컬럼 라벨을 "YY.MM" 형식으로 변환 (예: 2024-09 → "24.09")
-        new_cols = []
-        for k in full_keys:
-            y = k // 12
-            m = (k % 12) + 1
-            yy = str(int(y))[-2:]
-            new_cols.append(f"{yy}.{m:02d}")
-        piv.columns = new_cols
+            col_labels = []
+            for k in full_keys:
+                y_ = k // 12
+                m_ = (k % 12) + 1
+                yy = str(int(y_))[-2:]
+                col_labels.append(f"{yy}.{m_:02d}")
+
+            piv = pd.DataFrame('-', index=item_order, columns=col_labels)
+        else:
+            # 피벗: 컬럼 = ym_key
+            piv = q.pivot_table(index="구분1", columns="ym_key", values="실적", aggfunc="sum")
+
+            # 전체 12개월 키 생성 (데이터 없으면 NaN 컬럼으로 채움)
+            for k in full_keys:
+                if k not in piv.columns:
+                    piv[k] = np.nan
+            piv = piv[full_keys]
+
+            # 컬럼 라벨을 "YY.MM" 형식으로 변환 (예: 2024-09 → "24.09")
+            new_cols = []
+            for k in full_keys:
+                y_ = k // 12
+                m_ = (k % 12) + 1
+                yy = str(int(y_))[-2:]
+                new_cols.append(f"{yy}.{m_:02d}")
+            piv.columns = new_cols
 
     # ==============================
     # B. 연도 컬럼이 없는 경우: 같은 연도 내에서만 롤링 (fallback)
@@ -1087,43 +1196,57 @@ def create_material_usage_table_pohang(
         # month 기준 window개월 전 ~ month까지 (1~12 범위 안에서만)
         start_month = max(1, int(month) - (window - 1))
         end_month = int(month)
-
         months_range = list(range(start_month, end_month + 1))
+
         q = q[q["월"].isin(months_range)].copy()
 
         if q.empty:
-            raise ValueError("지정한 월 범위에 해당하는 데이터가 없습니다.")
+            # ★ 12개월 전체에 데이터가 1건도 없는 경우 → '-' 템플릿
+            no_data_all = True
+            col_labels = [f"{m}월" for m in months_range]
+            piv = pd.DataFrame('-', index=item_order, columns=col_labels)
+        else:
+            piv = q.pivot_table(index="구분1", columns="월", values="실적", aggfunc="sum")
 
-        piv = q.pivot_table(index="구분1", columns="월", values="실적", aggfunc="sum")
+            # 누락 월 NaN 추가 + 정렬
+            for m in months_range:
+                if m not in piv.columns:
+                    piv[m] = np.nan
+            piv = piv[months_range]
 
-        # 누락 월 NaN 추가 + 정렬
-        for m in months_range:
-            if m not in piv.columns:
-                piv[m] = np.nan
-        piv = piv[months_range]
-
-        # 기존과 비슷하게 "n월" 라벨 사용
-        piv.columns = [f"{m}월" for m in months_range]
+            # "n월" 라벨 사용
+            piv.columns = [f"{m}월" for m in months_range]
 
     # ==============================
     # C. 행 순서 정리 + 반올림
     # ==============================
-    if item_order is None:
-        item_order = ["열처리用LNG(㎥)", "질소(㎥)", "염산(kg)", "수소(㎥)", "산세용LNG(㎥)", "피막보급제(kg)"]
+    if no_data_all:
+        # 전체 구간 무데이터 → 이미 piv가 item_order × 12개월, 값은 '-'
+        # 그래도 혹시 모를 순서 정리를 한 번 더
+        order = [r for r in item_order if r in piv.index]
+        if order:
+            piv = piv.loc[order]
+        out = piv  # 문자열 그대로 반환 (반올림/숫자 변환 X)
+    else:
+        # 데이터가 있는 경우: 숫자형 변환 + 반올림
+        order = [r for r in item_order if r in piv.index]
+        if order:
+            piv = piv.loc[order]
 
-    order = [r for r in item_order if r in piv.index]
-    if order:
-        piv = piv.loc[order]
+        out = piv.apply(pd.to_numeric, errors="coerce").astype(float).round(round_digits)
 
-    out = piv.apply(pd.to_numeric, errors="coerce").astype(float).round(round_digits)
     out.index.name = plant_name
     return out
+
 
 
 
 ########################
 ##사용량 원단위 추이 충주1##
 ########################
+
+import pandas as pd
+import numpy as np
 
 def create_material_usage_table_chungju1(
     year: int,
@@ -1139,8 +1262,9 @@ def create_material_usage_table_chungju1(
     - 기준 연/월(year, month)을 포함하여 과거 window-1개월까지의 데이터 사용
       (예: year=2025, month=8, window=12 → 2024-09 ~ 2025-08)
     - 필요한 컬럼: 구분3(공장), 구분1(항목), 월, 실적  (+ 선택: 연도)
-    - 기간 안에 데이터가 없어도 그 달은 컬럼으로 생성(NaN)
-    - 행(item_order)은 교집합만 정렬하여 NaN 행 생성 방지
+    - 기간 안에 데이터가 없어도 그 달은 컬럼으로 생성
+    - 선택 연월 기준 window개월 전체에 데이터가 1건도 없으면
+      → item_order 행 + 12개월 열 구조 유지, 값은 전부 '-'로 채움
     """
 
     required = ["구분3", "구분1", "월", "실적"]
@@ -1150,12 +1274,18 @@ def create_material_usage_table_chungju1(
     if missing:
         raise ValueError(f"필수 컬럼 누락: {missing} (필요: {required})")
 
+    # item_order 기본값
+    if item_order is None:
+        item_order = ["열처리用LNG(㎥)", "질소(㎥)", "염산(kg)", "수소(㎥)", "산세용LNG(㎥)", "피막보급제(kg)"]
+
     # 1) 공장 필터
     q = df[df["구분3"].astype(str).str.contains(plant_name, na=False)].copy()
 
     # 2) 숫자화
     q["월"] = pd.to_numeric(q["월"], errors="coerce")
     q["실적"] = pd.to_numeric(q["실적"], errors="coerce")
+
+    no_data_all = False  # 12개월 전체 무데이터 여부 플래그
 
     # ==============================
     # A. 연도 컬럼이 있는 경우: 연/월 기준 '진짜' 롤링 12개월
@@ -1176,23 +1306,34 @@ def create_material_usage_table_chungju1(
         # 구간 내 데이터만 필터
         q = q[(q["ym_key"] >= start_key) & (q["ym_key"] <= end_key)].copy()
 
-        # 피벗: 컬럼 = ym_key
-        piv = q.pivot_table(index="구분1", columns="ym_key", values="실적", aggfunc="sum")
+        if q.empty:
+            # ★ 12개월 전체에 데이터 1건도 없으면 '-' 템플릿
+            no_data_all = True
+            labels = []
+            for k in full_keys:
+                y = k // 12
+                m = (k % 12) + 1
+                yy = str(int(y))[-2:]
+                labels.append(f"{yy}.{m:02d}")
+            piv = pd.DataFrame('-', index=item_order, columns=labels)
+        else:
+            # 피벗: 컬럼 = ym_key
+            piv = q.pivot_table(index="구분1", columns="ym_key", values="실적", aggfunc="sum")
 
-        # 데이터 없는 달도 컬럼 생성(NaN)
-        for k in full_keys:
-            if k not in piv.columns:
-                piv[k] = np.nan
-        piv = piv[full_keys]
+            # 데이터 없는 달도 컬럼 생성(NaN)
+            for k in full_keys:
+                if k not in piv.columns:
+                    piv[k] = np.nan
+            piv = piv[full_keys]
 
-        # 컬럼 라벨을 "YY.MM" 형식으로 변환 (예: 2024-12 → "24.12")
-        labels = []
-        for k in full_keys:
-            y = k // 12
-            m = (k % 12) + 1
-            yy = str(int(y))[-2:]  # 뒤 2자리
-            labels.append(f"{yy}.{m:02d}")
-        piv.columns = labels
+            # 컬럼 라벨을 "YY.MM" 형식으로 변환
+            labels = []
+            for k in full_keys:
+                y = k // 12
+                m = (k % 12) + 1
+                yy = str(int(y))[-2:]
+                labels.append(f"{yy}.{m:02d}")
+            piv.columns = labels
 
     # ==============================
     # B. 연도 컬럼이 없는 경우: 같은 연도 내에서만 롤링 (fallback)
@@ -1207,27 +1348,39 @@ def create_material_usage_table_chungju1(
 
         q = q[q["월"].isin(months_range)].copy()
 
-        piv = q.pivot_table(index="구분1", columns="월", values="실적", aggfunc="sum")
+        if q.empty:
+            # ★ 12개월 전체에 데이터 1건도 없으면 '-' 템플릿
+            no_data_all = True
+            labels = [f"{m}월" for m in months_range]
+            piv = pd.DataFrame('-', index=item_order, columns=labels)
+        else:
+            piv = q.pivot_table(index="구분1", columns="월", values="실적", aggfunc="sum")
 
-        # 누락 월 NaN 추가 + 순서 정렬
-        for m in months_range:
-            if m not in piv.columns:
-                piv[m] = np.nan
-        piv = piv[months_range]
+            # 누락 월 NaN 추가 + 순서 정렬
+            for m in months_range:
+                if m not in piv.columns:
+                    piv[m] = np.nan
+            piv = piv[months_range]
 
-        piv.columns = [f"{m}월" for m in months_range]
+            piv.columns = [f"{m}월" for m in months_range]
 
     # ==============================
     # C. 행 순서 정리 + 반올림
     # ==============================
-    if item_order is None:
-        item_order = ["열처리用LNG(㎥)", "질소(㎥)", "염산(kg)", "수소(㎥)", "산세용LNG(㎥)", "피막보급제(kg)"]
+    if no_data_all:
+        # 이미 item_order × window개월, 값은 '-' 인 상태
+        order = [r for r in item_order if r in piv.index]
+        if order:
+            piv = piv.loc[order]
+        out = piv  # 문자열 그대로 반환
+    else:
+        # 데이터가 있는 경우: 숫자형 변환 + 반올림
+        order = [r for r in item_order if r in piv.index]
+        if order:
+            piv = piv.loc[order]
 
-    order = [r for r in item_order if r in piv.index]
-    if order:
-        piv = piv.loc[order]
+        out = piv.apply(pd.to_numeric, errors="coerce").astype(float).round(round_digits)
 
-    out = piv.apply(pd.to_numeric, errors="coerce").astype(float).round(round_digits)
     out.index.name = plant_name
     return out
 
@@ -1235,6 +1388,9 @@ def create_material_usage_table_chungju1(
 ########################
 ##사용량 원단위 추이 충주2##
 ########################
+
+import pandas as pd
+import numpy as np
 
 def create_material_usage_table_chungju2(
     year: int,
@@ -1250,8 +1406,9 @@ def create_material_usage_table_chungju2(
     - 기준 연/월(year, month)을 포함하여 과거 window-1개월까지의 데이터 사용
       (예: year=2025, month=8, window=12 → 2024-09 ~ 2025-08)
     - 필요한 컬럼: 구분3(공장), 구분1(항목), 월, 실적  (+ 선택: 연도)
-    - 기간 안에 데이터가 없어도 그 달은 컬럼으로 생성(NaN)
-    - 행(item_order)은 교집합만 정렬하여 NaN 행 생성 방지
+    - 기간 안에 데이터가 없어도 그 달은 컬럼으로 생성
+    - 선택 연월 기준 window개월 전체에 데이터가 1건도 없으면
+      → item_order 행 + window개월 열 구조 유지, 값은 전부 '-' 로 채움
     """
 
     required = ["구분3", "구분1", "월", "실적"]
@@ -1261,12 +1418,18 @@ def create_material_usage_table_chungju2(
     if missing:
         raise ValueError(f"필수 컬럼 누락: {missing} (필요: {required})")
 
+    # item_order 기본값
+    if item_order is None:
+        item_order = ["CD用SHOTBALL(kg)", "CD/BTB 방청유(Drum)"]
+
     # 1) 공장 필터
     q = df[df["구분3"].astype(str).str.contains(plant_name, na=False)].copy()
 
     # 2) 숫자화
     q["월"] = pd.to_numeric(q["월"], errors="coerce")
     q["실적"] = pd.to_numeric(q["실적"], errors="coerce")
+
+    no_data_all = False  # 12개월 전체 무데이터 여부
 
     # ==============================
     # A. 연도 컬럼이 있는 경우: 연/월 기준 롤링 window개월
@@ -1281,29 +1444,36 @@ def create_material_usage_table_chungju2(
         end_key = int(year) * 12 + (int(month) - 1)
         start_key = end_key - (window - 1)
 
-        # 12개월 구간 전체 키
+        # window개월 구간 전체 키
         full_keys = list(range(start_key, end_key + 1))
 
-        # 구간 내 데이터만 필터
-        q = q[(q["ym_key"] >= start_key) & (q["ym_key"] <= end_key)].copy()
-
-        # 피벗: 컬럼 = ym_key
-        piv = q.pivot_table(index="구분1", columns="ym_key", values="실적", aggfunc="sum")
-
-        # 데이터 없는 달도 컬럼 생성(NaN)
-        for k in full_keys:
-            if k not in piv.columns:
-                piv[k] = np.nan
-        piv = piv[full_keys]
-
-        # 컬럼 라벨을 "YY.MM" 형식으로 변환 (예: 2024-12 → "24.12")
+        # 컬럼 라벨 "YY.MM" 미리 생성
         labels = []
         for k in full_keys:
             y = k // 12
             m = (k % 12) + 1
-            yy = str(int(y))[-2:]  # 뒤 2자리
+            yy = str(int(y))[-2:]
             labels.append(f"{yy}.{m:02d}")
-        piv.columns = labels
+
+        # 구간 내 데이터만 필터
+        q = q[(q["ym_key"] >= start_key) & (q["ym_key"] <= end_key)].copy()
+
+        if q.empty:
+            # ★ 전체 기간 무데이터 → '-' 템플릿
+            no_data_all = True
+            piv = pd.DataFrame('-', index=item_order, columns=labels)
+        else:
+            # 피벗: 컬럼 = ym_key
+            piv = q.pivot_table(index="구분1", columns="ym_key", values="실적", aggfunc="sum")
+
+            # 데이터 없는 달도 컬럼 생성(NaN)
+            for k in full_keys:
+                if k not in piv.columns:
+                    piv[k] = np.nan
+            piv = piv[full_keys]
+
+            # "YY.MM" 라벨 적용
+            piv.columns = labels
 
     # ==============================
     # B. 연도 컬럼이 없는 경우: 같은 연도 내에서만 롤링 (fallback)
@@ -1316,31 +1486,45 @@ def create_material_usage_table_chungju2(
         start_m = max(1, end_m - (window - 1))
         months_range = list(range(start_m, end_m + 1))
 
+        labels = [f"{m}월" for m in months_range]
+
         q = q[q["월"].isin(months_range)].copy()
 
-        piv = q.pivot_table(index="구분1", columns="월", values="실적", aggfunc="sum")
+        if q.empty:
+            # ★ 전체 기간 무데이터 → '-' 템플릿
+            no_data_all = True
+            piv = pd.DataFrame('-', index=item_order, columns=labels)
+        else:
+            piv = q.pivot_table(index="구분1", columns="월", values="실적", aggfunc="sum")
 
-        # 누락 월 NaN 추가 + 순서 정렬
-        for m in months_range:
-            if m not in piv.columns:
-                piv[m] = np.nan
-        piv = piv[months_range]
+            # 누락 월 NaN 추가 + 순서 정렬
+            for m in months_range:
+                if m not in piv.columns:
+                    piv[m] = np.nan
+            piv = piv[months_range]
 
-        piv.columns = [f"{m}월" for m in months_range]
+            piv.columns = labels
 
     # ==============================
     # C. 행 순서 정리 + 반올림
     # ==============================
-    if item_order is None:
-        item_order = ["CD用SHOTBALL(kg)", "CD/BTB 방청유(Drum)"]
+    if no_data_all:
+        # 이미 item_order × window개월, 값은 '-' 인 상태
+        order = [r for r in item_order if r in piv.index]
+        if order:
+            piv = piv.loc[order]
+        out = piv  # 문자열 그대로 반환
+    else:
+        # 데이터가 있는 경우: 숫자형 변환 + 반올림
+        order = [r for r in item_order if r in piv.index]
+        if order:
+            piv = piv.loc[order]
 
-    order = [r for r in item_order if r in piv.index]
-    if order:
-        piv = piv.loc[order]
+        out = piv.apply(pd.to_numeric, errors="coerce").astype(float).round(round_digits)
 
-    out = piv.apply(pd.to_numeric, errors="coerce").astype(float).round(round_digits)
     out.index.name = plant_name
     return out
+
 
 
 
@@ -1530,6 +1714,11 @@ def load_nonop_cost_csv(source: str) -> pd.DataFrame:
     return df.groupby(key, as_index=False, dropna=False)["실적"].sum()
 
 
+
+##### 비용분석 영업외 비용 내역 #####
+
+import pandas as pd
+
 def create_nonop_cost_3month_by_g2_g4(year: int, month: int, data: pd.DataFrame) -> pd.DataFrame:
     """
     섹션: 구분2 (기타비용/금융비용)
@@ -1542,28 +1731,65 @@ def create_nonop_cost_3month_by_g2_g4(year: int, month: int, data: pd.DataFrame)
       - 섹션 합계는 섹션 내 표시한 모든 행(부모/자식/일반)을 합산
     열   : 전전월/전월/당월 실적 + 증감(당월−전월)
     """
-    y = int(year)
-    m = max(int(month), 1)
-    m1, m2 = max(m-1, 1), max(m-2, 1)
 
-    df_y = data[(data["연도"] == y) & (data["월"].isin([m2, m1, m]))].copy()
+    # ── 1. 기준 연월 및 전월/전전월 계산 (연도 포함) ──
+    y0 = int(year)
+    m0 = int(month)
 
-    # 월 피벗 (구분2, 구분4)
+    def shift_month(y: int, m: int, delta: int):
+        # y,m에서 delta개월 이동 (delta < 0 이면 과거)
+        total = y * 12 + (m - 1) + delta
+        yy = total // 12
+        mm = total % 12 + 1
+        return yy, mm
+
+    y1, m1 = shift_month(y0, m0, -1)  # 전월
+    y2, m2 = shift_month(y0, m0, -2)  # 전전월
+
+    # 연월 키 (예: 2025년 11월 -> 202511)
+    key0 = y0 * 100 + m0
+    key1 = y1 * 100 + m1
+    key2 = y2 * 100 + m2
+    keys = [key2, key1, key0]
+
+    # ── 2. 선택연월 기준 3개월 데이터만 필터 ──
+    #    (연도/월을 합쳐 키로 만든 뒤 isin)
+    ym_key = data["연도"].astype(int) * 100 + data["월"].astype(int)
+    df_y = data[ym_key.isin(keys)].copy()
+    df_y["연월키"] = df_y["연도"].astype(int) * 100 + df_y["월"].astype(int)
+
+    # ── 3. 피벗: (구분2, 구분4) 기준, 연월키를 컬럼으로 ──
     piv = (
-        df_y.pivot_table(index=["구분2","구분4"], columns="월", values="실적",
-                         aggfunc="sum", fill_value=0.0)
-            .reindex(columns=[m2, m1, m], fill_value=0.0)
-            .reset_index()
+        df_y.pivot_table(
+            index=["구분2", "구분4"],
+            columns="연월키",
+            values="실적",
+            aggfunc="sum",
+            fill_value=0.0,
+        )
+        .reindex(columns=keys, fill_value=0.0)   # 전전월/전월/당월 순서
+        .reset_index()
     )
 
-    def _lbl(mm:int)->str: return f"'{str(y)[-2:]}.{mm}월 실적"
-    c_m2, c_m1, c_m = _lbl(m2), _lbl(m1), _lbl(m)
-    for mm, col in zip([m2, m1, m], [c_m2, c_m1, c_m]):
-        piv[col] = piv[mm].astype(float)
-    piv["증감"] = piv[c_m] - piv[c_m1]
-    piv = piv.drop(columns=[m2, m1, m])
+    # ── 4. 표시용 컬럼명 생성 (연도까지 반영) ──
+    def _lbl(yy: int, mm: int) -> str:
+        return f"'{str(yy)[-2:]}.{mm}월 실적"
 
-    # ── 섹션별(구분2) 원하는 노출 순서 ──
+    c_m2 = _lbl(y2, m2)   # 전전월
+    c_m1 = _lbl(y1, m1)   # 전월
+    c_m  = _lbl(y0, m0)   # 당월
+
+    # 피벗 컬럼(숫자 키) → 사람이 읽을 수 있는 한글 컬럼명으로 복사
+    for k, col in zip(keys, [c_m2, c_m1, c_m]):
+        piv[col] = piv[k].astype(float)
+
+    # 증감 = 당월 - 전월
+    piv["증감"] = piv[c_m] - piv[c_m1]
+
+    # 원래 키 컬럼(숫자)들은 삭제
+    piv = piv.drop(columns=keys)
+
+    # ── 5. 섹션별(구분2) 원하는 노출 순서 ──
     order_fin = [  # 금융비용
         "이자비용",
         "외환차손",
@@ -1587,7 +1813,6 @@ def create_nonop_cost_3month_by_g2_g4(year: int, month: int, data: pd.DataFrame)
         "종속기업주식손상차손",
         "기타비용",            # (구분4에 같은 이름이 있을 수 있음)
     ]
-    
 
     rows = []
 
@@ -1611,6 +1836,7 @@ def create_nonop_cost_3month_by_g2_g4(year: int, month: int, data: pd.DataFrame)
                 if parent is not None:
                     add_row("", "지급수수료(영업외)",
                             parent[c_m2], parent[c_m1], parent[c_m], parent["증감"], "parent")
+
                 # child 1: 고철매각작업비 (실데이터가 있으면)
                 steel = recs.get("고철매각작업비")
                 # child 2: 기타 = 잡손실 − 고철매각작업비
@@ -1619,8 +1845,8 @@ def create_nonop_cost_3month_by_g2_g4(year: int, month: int, data: pd.DataFrame)
                 if steel is not None:
                     add_row("", "고철매각작업비",
                             steel[c_m2], steel[c_m1], steel[c_m], steel["증감"], "child")
-                # 기타 = 잡손실 − 고철
-                # (둘 중 하나 없으면 없는 값은 0으로 간주)
+
+                # 기타 = 잡손실 − 고철 (둘 중 하나 없으면 없는 값은 0으로 간주)
                 v_j2 = float(jab[c_m2]) if jab is not None else 0.0
                 v_j1 = float(jab[c_m1]) if jab is not None else 0.0
                 v_j  = float(jab[c_m])  if jab is not None else 0.0
@@ -1631,7 +1857,8 @@ def create_nonop_cost_3month_by_g2_g4(year: int, month: int, data: pd.DataFrame)
                 v_s  = float(steel[c_m])  if steel is not None else 0.0
                 d_s  = float(steel["증감"]) if steel is not None else 0.0
 
-                add_row("", "기타", v_j2 - v_s2, v_j1 - v_s1, v_j - v_s, d_j - d_s, "child")
+                add_row("", "기타",
+                        v_j2 - v_s2, v_j1 - v_s1, v_j - v_s, d_j - d_s, "child")
 
                 # 이미 처리했으니 이후 루프에서 중복 추가 방지
                 continue
@@ -1663,27 +1890,84 @@ def create_nonop_cost_3month_by_g2_g4(year: int, month: int, data: pd.DataFrame)
             continue
 
         if sec == "기타비용":
-            build_section("기타비용", grp, order_etc)   # (기부금, 유형자산처분손실, ... 순서 포함)
+            build_section("기타비용", grp, order_etc)
         elif sec == "금융비용":
-            build_section("금융비용", grp, order_fin)   # (이자비용, 외환차손, ... 순서 포함)
+            build_section("금융비용", grp, order_fin)
         else:
-            # 그 외 섹션은 구분4 사전순 또는 원하시는 고정 리스트를 추가로 지정 가능
             build_section(str(sec), grp, sorted(grp["구분4"].unique().tolist()))
 
     # 최종 '계'
     out = pd.DataFrame(rows)
-    grand = out[out["_row_type"] == "section_total"][[c_m2, c_m1, c_m, "증감"]].sum(numeric_only=True)
+
+    # ---- 1) 이번 3개월 구간에 데이터가 전혀 없어서 rows 비어 있는 경우 ----
+    if out.empty or "_row_type" not in out.columns:
+        rows = []  # 초기화해서 템플릿 구조로 다시 만든다.
+
+        def add_zero_row(sec, acct, row_type):
+            rows.append({
+                "구분": sec if row_type in ("section_total", "grand_total") else "",
+                "계정": acct,
+                c_m2: 0.0,
+                c_m1: 0.0,
+                c_m:  0.0,
+                "증감": 0.0,
+                "_row_type": row_type,
+            })
+
+        # ── 기타비용 섹션 (고정 구조) ──
+        for acct in order_etc:
+            if acct == "지급수수료(영업외)":
+                add_zero_row("", acct, "parent")
+            elif acct in ("고철매각작업비", "기타"):
+                add_zero_row("", acct, "child")
+            else:
+                add_zero_row("", acct, "item")
+        # 기타비용 합계
+        add_zero_row("기타비용", "", "section_total")
+
+        # ── 금융비용 섹션 (고정 구조) ──
+        for acct in order_fin:
+            add_zero_row("", acct, "item")
+        # 금융비용 합계
+        add_zero_row("금융비용", "", "section_total")
+
+        # 전체 계
+        add_zero_row("계", "", "grand_total")
+
+        out = pd.DataFrame(rows)
+        return out[["구분", "계정", c_m2, c_m1, c_m, "증감", "_row_type"]]
+
+    # ---- 2) 데이터가 있는 경우: 기존 로직대로 섹션 합계 → 전체 계 계산 ----
+    sec_totals = out[out["_row_type"] == "section_total"]
+    if sec_totals.empty:
+        grand_vals = {c_m2: 0.0, c_m1: 0.0, c_m: 0.0, "증감": 0.0}
+    else:
+        s = sec_totals[[c_m2, c_m1, c_m, "증감"]].sum(numeric_only=True)
+        grand_vals = {
+            c_m2: float(s.get(c_m2, 0.0)),
+            c_m1: float(s.get(c_m1, 0.0)),
+            c_m:  float(s.get(c_m, 0.0)),
+            "증감": float(s.get("증감", 0.0)),
+        }
+
     rows.append({
         "구분": "계", "계정": "",
-        c_m2: float(grand[c_m2]) if not pd.isna(grand[c_m2]) else 0.0,
-        c_m1: float(grand[c_m1]) if not pd.isna(grand[c_m1]) else 0.0,
-        c_m:  float(grand[c_m])  if not pd.isna(grand[c_m])  else 0.0,
-        "증감": float(grand["증감"]) if not pd.isna(grand["증감"]) else 0.0,
-        "_row_type": "grand_total"
+        c_m2: grand_vals[c_m2],
+        c_m1: grand_vals[c_m1],
+        c_m:  grand_vals[c_m],
+        "증감": grand_vals["증감"],
+        "_row_type": "grand_total",
     })
     out = pd.DataFrame(rows)
 
     return out[["구분", "계정", c_m2, c_m1, c_m, "증감", "_row_type"]]
+
+
+
+
+
+
+
 
 
 ##### 실적 분석 #####
