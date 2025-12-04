@@ -251,19 +251,15 @@ with t2:
     df_chq_1 = modules.create_df(this_year, current_month, load_data(st.secrets['sheets']['f_32']))
     df_plot_chq = df_chq_1.loc[('CHQ', ['열처리', '비열처리']), df_chq_1.columns[:6]]
     fig_chq = create_stacked_bar_chart(
-    df_plot_chq,
-    [('CHQ', '열처리'), ('CHQ', '비열처리')],
-    ['#e54e2b', '#3b4951']
+        df_plot_chq,
+        [('CHQ', '열처리'), ('CHQ', '비열처리')],
+        ['#e54e2b', '#3b4951']
     )
     chart_col, _ = st.columns([0.7, 0.3])   # 왼쪽: 차트, 오른쪽: 여백
     with chart_col:
-        st.plotly_chart(fig_chq, use_container_width=True)
+        st.plotly_chart(fig_chq, use_container_width=True, key="plot_chq_main")
 
-
-
-    # with chart_col:
-    #     st.plotly_chart(fig_chq, use_container_width=True)
-    display_memo('f_32',this_year, current_month)
+    display_memo('f_32', this_year, current_month)
 
     st.markdown("<h6>[월별 산업/중국材 판매 추이(B급 제외)]</h6>", unsafe_allow_html=True)
     df_chq_2 = modules.create_df(this_year, current_month, load_data(st.secrets['sheets']['f_33']))
@@ -275,9 +271,9 @@ with t2:
     )
     chart_col, _ = st.columns([0.7, 0.3])   # 왼쪽: 차트, 오른쪽: 여백
     with chart_col:
-        st.plotly_chart(fig_chq2, use_container_width=True)
+        st.plotly_chart(fig_chq2, use_container_width=True, key="plot_chq_industrial")
 
-    display_memo('f_33',this_year, current_month)
+    display_memo('f_33', this_year, current_month)
     st.divider()
 
     # (3) CD 강종류별 판매현황
@@ -293,9 +289,9 @@ with t2:
 
     chart_col, _ = st.columns([0.7, 0.3])  # 왼쪽: 차트, 오른쪽: 여백
     with chart_col:
-        st.plotly_chart(fig_cd, use_container_width=True)
+        st.plotly_chart(fig_cd, use_container_width=True, key="plot_cd_main")
 
-    display_memo('f_34',this_year, current_month)
+    display_memo('f_34', this_year, current_month)
 
     st.markdown("<h6>[월별 산업/중국材 CD 판매 추이(B급 제외)]</h6>", unsafe_allow_html=True)
     df_cd_2 = modules.create_df(this_year, current_month, load_data(st.secrets['sheets']['f_35']))
@@ -308,9 +304,9 @@ with t2:
 
     chart_col, _ = st.columns([0.7, 0.3])   # 왼쪽: 차트, 오른쪽: 여백
     with chart_col:
-        st.plotly_chart(fig_cd2, use_container_width=True)
+        st.plotly_chart(fig_cd2, use_container_width=True, key="plot_cd_industrial")
 
-    display_memo('f_35',this_year, current_month)
+    display_memo('f_35', this_year, current_month)
     st.divider()
 
     # (4) 비가공품 판매현황
@@ -331,10 +327,9 @@ with t2:
 
     chart_col, _ = st.columns([0.7, 0.3])  # 왼쪽: 차트, 오른쪽: 여백
     with chart_col:
-        st.plotly_chart(fig_process, use_container_width=True)
+        st.plotly_chart(fig_process, use_container_width=True, key="plot_process")
 
-
-    display_memo('f_36',this_year, current_month)
+    display_memo('f_36', this_year, current_month)
     st.divider()
 
     # (5) 동일거래처 매입매출현황
@@ -350,10 +345,11 @@ with t2:
 
     chart_col, _ = st.columns([0.7, 0.3])  # 왼쪽: 차트, 오른쪽: 여백
     with chart_col:
-        st.plotly_chart(fig_same, use_container_width=True)
+        st.plotly_chart(fig_same, use_container_width=True, key="plot_same")
 
-    display_memo('f_37',this_year, current_month)
+    display_memo('f_37', this_year, current_month)
     st.divider()
+
 
     # (6) PSI 지표
     st.markdown("<h5>(6-1). PSI (입고, 판매, 재고) 지표 (매입매출 포함)</h5>", unsafe_allow_html=True)
