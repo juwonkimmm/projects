@@ -883,10 +883,10 @@ with t3:
     st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 천원/톤]</div>", unsafe_allow_html=True)
 
     try:
-        file_name = st.secrets["sheets"]["f_23"]  # 파일 경로/시크릿 키는 환경에 맞게
+        file_name = st.secrets["sheets"]["f_23"]  
         df_src = pd.read_csv(file_name, dtype=str)
 
-        # 숫자필드는 모듈에서 처리하므로 여기서는 최소 정리만
+
         df_src["연도"] = pd.to_numeric(df_src["연도"], errors="coerce")
         df_src["월"]   = pd.to_numeric(df_src["월"],   errors="coerce")
 
@@ -896,7 +896,7 @@ with t3:
         wide, col_order, hdr1_labels, hdr2_labels = modules.build_posco_jfe_price_wide(
             df_src, sel_y, sel_m,
             group_name="포스코 對 JFE 입고가격",
-            monthly_years=(2021, 2022, 2023, 2024)
+
         )
 
         # === 표시용 변환: 문자열은 그대로, NaN만 빈칸 ===
@@ -921,10 +921,17 @@ with t3:
         hdr1 = ["", "", "", ""]
         for c in data_cols:
             if c.endswith("년 월평균"):
+                # 예: "2023년 월평균" → "2023년"
                 hdr1.append(c[:4] + "년")
             else:
                 m = dyn_pat.match(c)
-                hdr1.append(f"{sel_y}년" if m else "")
+                if m:
+                    # 동적 월 컬럼은 실제 연도 사용
+                    year = int(m.group("y"))
+                    hdr1.append(f"{year}년")
+                else:
+                    hdr1.append("")
+
 
         hdr2 = ["", "", "구분", ""]
         for c in data_cols:
@@ -969,7 +976,6 @@ with t3:
                 {'selector': f'tbody tr:nth-child(n+3) td:nth-child({j})', 'props':[('border-right','2px solid #eee')]},
             ]
 
-        # 필요 시 구분선(섹션 경계)을 추가하고 싶다면 여기서 조건부로 row 찾은 뒤 border-bottom 주입 가능
 
         # 음수/괄호 붉은색은 사용 안함(변동폭 화살표는 문자열)
         def _noop(_): return ''
@@ -995,19 +1001,16 @@ with t3:
     st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 백만원, 톤]</div>", unsafe_allow_html=True)
 
     try:
-        
         file_name = st.secrets["sheets"]["f_24"]
         df_src = pd.read_csv(file_name, dtype=str)  
         df_src["연도"] = pd.to_numeric(df_src["연도"], errors="coerce")
         df_src["월"]   = pd.to_numeric(df_src["월"],   errors="coerce")
-
 
         sel_y = int(st.session_state["year"])
         sel_m = int(st.session_state["month"])
 
         ret = modules.build_posco_jfe_wide(df_src, sel_y, sel_m)
         wide = ret[0] if isinstance(ret, tuple) else ret
-
 
         def _fmt(idx, v):
             if pd.isna(v):
@@ -1022,9 +1025,7 @@ with t3:
         for c in vis.columns:
             vis[c] = [_fmt(i, x) for i, x in zip(vis.index, vis[c])]
 
-
-
-
+        # (참고: _month_shift는 여기선 안 써서 지워도 됨)
         def _month_shift(y: int, m: int, delta: int):
             t = y * 12 + (m - 1) + delta
             ny = t // 12
@@ -1042,22 +1043,24 @@ with t3:
         cols = disp.columns.tolist()
         data_cols = [c for c in cols if c not in (SPACER, "구분", "세부", "항목")]
 
-
+        # === 여기부터 헤더 부분 수정 ===
         dyn_pat = re.compile(r"^(?P<m>\d{1,2})월\((?P<y>\d{4})\)$")
 
-
+        # 상단 헤더: 연도 (월평균은 'YYYY년', 동적 칸은 실제 연도 'YYYY년')
         hdr1 = ["", "", "", ""]
         for c in data_cols:
             if c.endswith("년 월평균"):
-                hdr1.append(c[:4] + "년")               
+                # 예: "2023년 월평균" → "2023년"
+                hdr1.append(c[:4] + "년")
             else:
                 m = dyn_pat.match(c)
                 if m:
-                    hdr1.append(f"{sel_y}년")          
+                    year = int(m.group("y"))    # ← 컬럼에 적힌 실제 연도 사용
+                    hdr1.append(f"{year}년")
                 else:
                     hdr1.append("")
 
-
+        # 하단 헤더: '월평균' 또는 'M월'
         hdr2 = ["", "", "구분", ""]
         for c in data_cols:
             if c.endswith("년 월평균"):
@@ -1071,6 +1074,13 @@ with t3:
 
         hdr_df  = pd.DataFrame([hdr1, hdr2], columns=cols)
         disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
+
+        # --- 여기서부터 iloc 안전하게 쓰는 헬퍼 추가 ---
+        def _safe_iloc_set(df, r, c, value=""):
+            """df.shape 범위 안에서만 iloc 세팅 (벗어나면 그냥 무시)"""
+            if 0 <= r < df.shape[0] and 0 <= c < df.shape[1]:
+                df.iat[r, c] = value
+
 
         styles = [
             {'selector': 'thead', 'props': [('display','none')]},
@@ -1103,13 +1113,13 @@ with t3:
                 {'selector': f'tbody tr:nth-child(n+3) td:nth-child({j})', 'props':[('border-right','2px solid #eee')]}
             ]
 
-        disp_vis.iloc[0, 8] = "" ; disp_vis.iloc[0, 10] = "" ; 
-        disp_vis.iloc[3, 1] = "" ; disp_vis.iloc[3, 2]  = "" ; disp_vis.iloc[4, 1] = "" ;disp_vis.iloc[5, 1] = "" ; disp_vis.iloc[6, 1] = "" ; disp_vis.iloc[9, 1] = "" ; disp_vis.iloc[11, 1] = ""
-        disp_vis.iloc[5, 1] = "" ; disp_vis.iloc[5, 2]  = ""
-        disp_vis.iloc[8, 1] = "" ; disp_vis.iloc[8, 2]  = ""
-        disp_vis.iloc[10, 1] = "" ; disp_vis.iloc[10, 2]  = ""
-        disp_vis.iloc[6, 3] = "" ; disp_vis.iloc[11, 3] = ""
-        disp_vis.iloc[12, 3] = "" ; disp_vis.iloc[13, 3] = "" 
+        # disp_vis.iloc[0, 8] = "" ; disp_vis.iloc[0, 10] = "" ; 
+        # disp_vis.iloc[3, 1] = "" ; disp_vis.iloc[3, 2]  = "" ; disp_vis.iloc[4, 1] = "" ;disp_vis.iloc[5, 1] = "" ; disp_vis.iloc[6, 1] = "" ; disp_vis.iloc[9, 1] = "" ; disp_vis.iloc[11, 1] = ""
+        # disp_vis.iloc[5, 1] = "" ; disp_vis.iloc[5, 2]  = ""
+        # disp_vis.iloc[8, 1] = "" ; disp_vis.iloc[8, 2]  = ""
+        # disp_vis.iloc[10, 1] = "" ; disp_vis.iloc[10, 2]  = ""
+        # disp_vis.iloc[6, 3] = "" ; disp_vis.iloc[11, 3] = ""
+        # disp_vis.iloc[12, 3] = "" ; disp_vis.iloc[13, 3] = "" 
 
         spacer_rules1 = [
             {
@@ -1201,7 +1211,7 @@ with t3:
 
 
     except Exception as e:
-        st.error(f"포스코/JFE 입고가격 생성 오류: {e}")
+        st.error(f"포스코/JFE 투입비중 생성 오류: {e}")
 
     st.divider()
 
@@ -1442,83 +1452,145 @@ with t5:
         # 1) 데이터
         file_name = st.secrets["sheets"]["f_27"]
         df_src = pd.read_csv(file_name, dtype=str)
-        df_src = pd.read_csv(file_name, dtype=str)
         df_src["연도"] = pd.to_numeric(df_src["연도"], errors="coerce")
 
-
+        # sel_y, sel_m 은 앞에서 세션에서 꺼낸다고 가정
+        sel_y = int(st.session_state["year"])
+        sel_m = int(st.session_state["month"])
 
         disp_raw, meta = modules.build_sgna_table(df_src, sel_y, sel_m)
-        avg_years = meta.get("avg_years", [])   
-        m2, m1, m0 = meta["months"]
+        avg_years = meta.get("avg_years", [])     # 예: [2022, 2023, 2024]
+        m2, m1, m0 = meta["months"]               # 예: ("11", "12", "1") 혹은 숫자/문자 섞여 있을 수 있음
 
-       
+        # 문자열로 월 컬럼 이름 통일
+        m2_col = f"{int(m2)}월"
+        m1_col = f"{int(m1)}월"
+        m0_col = f"{int(m0)}월"
+
+        # 월평균 컬럼 이름 (앞에 ' 붙이는 기존 형식 유지)
         avg_cols = [f"'{y}년 월평균" for y in avg_years]
-        desired = ["구분"] + avg_cols + [f"{m2}월", f"{m1}월", f"{m0}월", "전월대비"]
 
+        desired = ["구분"] + avg_cols + [m2_col, m1_col, m0_col, "전월대비"]
         desired = [c for c in desired if c in disp_raw.columns]
+
         disp = disp_raw[desired].copy()
 
-        SPACER="__sp__"
+        # 스페이서 추가
+        SPACER = "__sp__"
         disp.insert(0, SPACER, "")
         cols = disp.columns.tolist()
 
-        hdr1 = ["", ""] + [f"'{y}년" for y in avg_years]
-        while len(hdr1) < len(cols): hdr1.append("")
-        hdr2 = ["", "구분"] + ["월평균"]*len(avg_years)
-        while len(hdr2) < len(cols): hdr2.append(cols[len(hdr2)])
+        # ----- 연도 계산용 month_shift -----
+        def _month_shift(y: int, m: int, delta: int):
+            t = y * 12 + (m - 1) + delta
+            ny = t // 12
+            nm = t % 12 + 1
+            return int(ny), int(nm)
+
+        # 전전월/전월/선택월의 실제 연도 계산
+        prev2_y, prev2_m = _month_shift(sel_y, sel_m, -2)
+        prev_y,  prev_m  = _month_shift(sel_y, sel_m, -1)
+        cur_y,   cur_m   = sel_y, sel_m
+
+        # 컬럼명 → (hdr1, hdr2) 매핑
+        hdr1_map = {}
+        hdr2_map = {}
+
+        # 1) 스페이서/구분/전월대비 등
+        hdr1_map[SPACER] = ""
+        hdr2_map[SPACER] = ""
+
+        hdr1_map["구분"] = ""
+        hdr2_map["구분"] = "구분"
+
+        hdr1_map["전월대비"] = ""
+        hdr2_map["전월대비"] = "전월대비"
+
+        # 2) 월평균 연도 헤더
+        for y in avg_years:
+            col_name = f"'{y}년 월평균"
+            hdr1_map[col_name] = f"'{y}년"
+            hdr2_map[col_name] = "월평균"
+
+        # 3) 전전월/전월/선택월 헤더 (연도/월 분리)
+        hdr1_map[m2_col] = f"{prev2_y}년"
+        hdr2_map[m2_col] = f"{int(m2)}월"
+
+        hdr1_map[m1_col] = f"{prev_y}년"
+        hdr2_map[m1_col] = f"{int(m1)}월"
+
+        hdr1_map[m0_col] = f"{cur_y}년"
+        hdr2_map[m0_col] = f"{int(m0)}월"
+
+        # 실제 컬럼 순서대로 헤더 배열 만들기
+        hdr1 = [hdr1_map.get(c, "") for c in cols]
+        hdr2 = [hdr2_map.get(c, "") for c in cols]
 
         hdr_df   = pd.DataFrame([hdr1, hdr2], columns=cols)
         disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
 
-
-
         # ====== 숫자 포맷(데이터 행만 적용) ======
         def fmt_num(v):
-            if pd.isna(v): return ""
+            if pd.isna(v): 
+                return ""
             iv = int(round(float(v)))
             return f"({abs(iv):,})" if iv < 0 else f"{iv:,}"
 
         def fmt_diff(v):
-            if pd.isna(v): return ""
+            if pd.isna(v): 
+                return ""
             iv = int(round(float(v)))
-            if iv < 0: return f'<span style="color:#d62728;">({abs(iv):,})</span>'
-            if iv > 0: return f"{iv:,}"
+            if iv < 0: 
+                return f'<span style="color:#d62728;">({abs(iv):,})</span>'
+            if iv > 0: 
+                return f"{iv:,}"
             return "0"
 
         body = disp_vis.copy()
-        data_rows = body.index[2:]  
-        for c in body.columns[2:]:  
+        data_rows = body.index[2:]   # 앞 2행은 가짜 헤더
+        for c in body.columns[2:]:   # SPACER, 구분 제외
             if c == "전월대비":
                 body.loc[data_rows, c] = body.loc[data_rows, c].apply(fmt_diff)
             else:
                 body.loc[data_rows, c] = body.loc[data_rows, c].apply(fmt_num)
 
-     
+        # ====== 스타일 ======
         styles = [
             {'selector': 'thead', 'props': [('display','none')]},
+            # 가짜 헤더 1행
             {'selector': 'tbody tr:nth-child(1) td', 'props': [
-                ('text-align','center'),('font-weight','700'),('border-bottom','2px solid #000 !important')
+                ('text-align','center'),
+                ('font-weight','700'),
+                ('border-bottom','2px solid #000 !important')
             ]},
+            # 가짜 헤더 2행
             {'selector': 'tbody tr:nth-child(2) td', 'props': [
-                ('text-align','center'),('font-weight','700')
+                ('text-align','center'),
+                ('font-weight','700')
             ]},
-            {'selector': 'tbody tr:nth-child(n+3) td:nth-child(2)', 'props': [('text-align','left'),('white-space','nowrap')]},
-            {'selector': 'tbody tr:nth-child(n+3) td:nth-child(n+3)', 'props': [('text-align','right')]},
-            {'selector': 'tbody tr td:nth-child(2)', 'props': [('border-right','3px solid gray !important')]},  # 구분 경계
+            # 본문: 구분(두 번째 컬럼) 왼쪽 정렬
+            {'selector': 'tbody tr:nth-child(n+3) td:nth-child(2)', 'props': [
+                ('text-align','left'),
+                ('white-space','nowrap')
+            ]},
+            # 본문 숫자 우측 정렬
+            {'selector': 'tbody tr:nth-child(n+3) td:nth-child(n+3)', 'props': [
+                ('text-align','right')
+            ]},
+            # 구분 경계
+            {'selector': 'tbody tr td:nth-child(2)', 'props': [
+                ('border-right','3px solid gray !important')
+            ]},
         ]
 
-
         display_styled_df(body, styles=styles, already_flat=True)
-        display_memo('f_27', year, month)
-
-
-
-
+        display_memo('f_27', sel_y, sel_m)
 
     except Exception as e:
         st.error(f"판매비와 관리비 표 생성 오류: {e}")
 
-    st.divider()
+
+        st.divider()
 
 
 
@@ -1599,6 +1671,7 @@ with t7:
     st.markdown("<h4>1) 통상임금 </h4>", unsafe_allow_html=True)
     st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 백만원]</div>",unsafe_allow_html=True)
 
+
     try:
         file_name = st.secrets["sheets"]["f_29"]
         df_src = pd.read_csv(file_name, dtype=str)
@@ -1607,18 +1680,50 @@ with t7:
 
         disp_raw = modules.build_wage_table_29(df_src, sel_y)
 
+        # ====== 여기서 skeleton 보정 시작 (modules는 건드리지 않음) ======
+        row_order = [
+            "1. 급여소급분_소급분",
+            "1. 급여소급분_증가분",
+            "2.연월차",
+            "3.퇴직급여",
+            "총계",
+        ]
+        blocks = ["총계", "선재", "AT"]
+
+        desired_index = pd.MultiIndex.from_product(
+            [blocks, row_order],
+            names=["구분", "항목"]
+        )
+
+        # disp_raw가 비어있거나, 일부 구분/항목이 없더라도
+        # 항상 (구분, 항목) 조합이 모두 존재하도록 재구성
+        if disp_raw.empty:
+            disp = pd.DataFrame(index=desired_index).reset_index()
+            for c in ["1분기", "2분기", "3분기", "4분기", "연간"]:
+                disp[c] = np.nan
+        else:
+            disp = disp_raw.copy()
+
+            # 혹시 모를 컬럼 누락 대비
+            for c in ["1분기", "2분기", "3분기", "4분기", "연간"]:
+                if c not in disp.columns:
+                    disp[c] = np.nan
+
+            # (구분, 항목) 기준으로 skeleton 인덱스로 재정렬
+            disp = disp.set_index(["구분", "항목"])
+            disp = disp.reindex(desired_index)
+            disp = disp.reset_index()
+        # ====== skeleton 보정 끝 ======
 
         SPACER = "__sp__"
-        disp = disp_raw.copy()
 
-
+        # 이후 로직은 기존과 동일
         insert_pos = disp.columns.get_loc("항목") + 1
         disp.insert(insert_pos, SPACER, "")
 
         cols = disp.columns.tolist()
 
         # 헤더도 동일한 순서로 8개
-
         hdr = ["구분", "항목", "", "1분기", "2분기", "3분기", "4분기", "연간"]
         hdr_df = pd.DataFrame([hdr], columns=cols)
 
@@ -1632,7 +1737,7 @@ with t7:
             return f"{iv:,}"
 
         body = disp_vis.copy()
-        data_rows = body.index[1:]  
+        data_rows = body.index[1:]  # 1행은 가짜 헤더
 
         num_cols = ["1분기", "2분기", "3분기", "4분기", "연간"]
         for c in num_cols:
@@ -1643,7 +1748,6 @@ with t7:
         styles = [
             # 기본 thead 숨김
             {'selector': 'thead', 'props': [('display', 'none')]},
-
 
             {
                 'selector': 'tbody tr:nth-child(1) td',
@@ -1684,6 +1788,7 @@ with t7:
         st.error(f"통상임금 표 생성 오류: {e}")
 
     st.divider()
+
 
 
 
