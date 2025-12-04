@@ -230,21 +230,12 @@ with t1:
 
 
 
-    # ✅ 선택 월 기준으로 최근 12개월만 사용 (컬럼 기준)
-    # cols = list(df_table.columns)
-    # if len(cols) > 12:
-    #     cols = cols[-12:]
-    # df_table = df_table[cols]
 
-## 일단 1년치 다 보이도록
-
-    # ➜ 인덱스를 컬럼으로 승격
     df_show = df_table.reset_index()
     df_show.columns.name = None
 
-    # ✅ 첫 번째 컬럼(포항=항목명)을 제외한 나머지를 전부 '월별 숫자 컬럼'으로 사용
-    month_cols = df_show.columns[1:]          # 예: ["24.01", "24.02", ...]
-    # 혹시 모를 타입 꼬임 방지용: 숫자로 강제 변환
+    month_cols = df_show.columns[1:]          #
+
     df_show[month_cols] = df_show[month_cols].apply(
         pd.to_numeric, errors="coerce"
     )
@@ -253,7 +244,7 @@ with t1:
 
     styled = (
         df_show.style
-        # ✅ 숫자 컬럼 포맷 (소수 1자리, NaN은 "-")
+
         .format({col: "{:.1f}" for col in numeric_cols}, na_rep="-")
         .hide(axis="index")
 
@@ -929,22 +920,47 @@ with t4:
 # =========================
 with t5:
     st.markdown(f"###  5) 월 평균 클레임 지급액</h4>", unsafe_allow_html=True)
-    df = modules.update_monthly_claim_form(this_year)
 
-    
-        # ➜ 인덱스를 컬럼으로 승격 (헤더 한 줄)
-    df_show = df_table.reset_index()
+    # 1) 모듈에서 연도별 피벗 데이터 가져오기
+    pivot = modules.update_monthly_claim_form()   # index: 구분2, columns: 연도(int)
+
+    # 2) 선택 연도(this_year) 기준으로 전전전/전전/전/현 4개 연도 결정
+    base_year = int(this_year)
+    target_years = [base_year - 3, base_year - 2, base_year - 1, base_year]
+    col_labels  = [f"{str(y)[2:]}년" for y in target_years]   # "23년", "24년" ...
+
+    # 3) 구분2 인덱스 기준으로 빈 DF 생성
+    idx = sorted(pivot.index.tolist())
+    df = pd.DataFrame(0.0, index=idx, columns=col_labels)
+
+    # 4) 연도별 값 채우기 (없는 연도는 0 유지)
+    for y, label in zip(target_years, col_labels):
+        if y in pivot.columns:
+            df[label] = pivot[y].reindex(df.index).fillna(0).round(0)  # 수치 반올림
+        else:
+            df[label] = 0.0
+
+    # 5) 합계 행 추가 (앞 5개만 합칠지, 전체 합칠지 기존 로직 유지)
+    if len(df.index) >= 5:
+        df.loc["합계", :] = df.iloc[0:5].sum()
+    else:
+        df.loc["합계", :] = df.sum()
+
+    # ─────────────────────────────
+    # 6) 스타일링 및 출력
+    # ─────────────────────────────
+
+    df_show = df.reset_index()   # index → 첫 컬럼(구분2)
     df_show.columns.name = None
 
     numeric_cols = df_show.select_dtypes(include="number").columns
     first_col = df_show.columns[0]
 
-    # ===== 표 스타일  =====
-    styled = (
+    styled_df = (
         df_show.style
         .format({col: "{:.1f}" for col in numeric_cols}, na_rep="-")
         .hide(axis="index")
-        # 1) 첫 번째 열 강조 
+        # 첫 열(구분2) 스타일
         .set_properties(
             subset=[first_col],
             **{
@@ -954,41 +970,29 @@ with t5:
                 "white-space": "nowrap",
             }
         )
-        # 2) 헤더 스타일 
+        # 헤더 스타일
         .set_table_styles([
             {
                 "selector": "th.col_heading.level0.col0",
                 "props": [
                     ("background-color", "#f0f0f0"),
                     ("font-weight", "700"),
-                    ("text-align", "center")
+                    ("text-align", "center"),
                 ],
             },
             {"selector": "th.col_heading", "props": [("text-align", "center")]},
         ])
-        # 3) 숫자 컬럼 정렬 
-        .set_properties(subset=[c for c in df_show.columns if c in numeric_cols], **{"text-align": "center"})
-    )
-    
-
-
-
-    styled_df = (
-            df.style
-            .format(lambda x: f"{x:,.0f}" if isinstance(x, (int, float)) and pd.notnull(x) else x)
-            .set_properties(**{'text-align': 'right'})
-            .set_properties(**{'font-family': 'Noto Sans KR'})
-            
+        # 숫자 컬럼 가운데 정렬
+        .set_properties(
+            subset=[c for c in df_show.columns if c in numeric_cols],
+            **{"text-align": "center"}
         )
-    
-    
-    
-    
+    )
 
-
-    table_html = styled_df.to_html(index=True)
+    table_html = styled_df.to_html(index=False)
     centered_html = f"<div style='display: flex; justify-content: left;'>{table_html}</div>"
     st.markdown(centered_html, unsafe_allow_html=True)
+
 
 # =========================
 #당월 클레임 내역
