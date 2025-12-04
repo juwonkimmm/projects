@@ -314,7 +314,7 @@ with t1:
                 "props": [
                     ("text-align", "center"),
                     ("font-weight", "700"),
-                    ("border-bottom", "3px solid #000 !important"),
+                    ("border-bottom", "3px solid gray !important"),
                 ],
             },
 
@@ -337,7 +337,7 @@ with t1:
             {
                 "selector": "tbody tr td:nth-child(3)",
                 "props": [
-                    ("border-right", "3px solid #000 !important"),
+                    ("border-right", "3px solid gray !important"),
                 ],
             },
         ]
