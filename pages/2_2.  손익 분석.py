@@ -1025,7 +1025,6 @@ with t3:
         for c in vis.columns:
             vis[c] = [_fmt(i, x) for i, x in zip(vis.index, vis[c])]
 
-        # (참고: _month_shift는 여기선 안 써서 지워도 됨)
         def _month_shift(y: int, m: int, delta: int):
             t = y * 12 + (m - 1) + delta
             ny = t // 12
@@ -1050,12 +1049,12 @@ with t3:
         hdr1 = ["", "", "", ""]
         for c in data_cols:
             if c.endswith("년 월평균"):
-                # 예: "2023년 월평균" → "2023년"
+
                 hdr1.append(c[:4] + "년")
             else:
                 m = dyn_pat.match(c)
                 if m:
-                    year = int(m.group("y"))    # ← 컬럼에 적힌 실제 연도 사용
+                    year = int(m.group("y"))    
                     hdr1.append(f"{year}년")
                 else:
                     hdr1.append("")
@@ -1075,7 +1074,6 @@ with t3:
         hdr_df  = pd.DataFrame([hdr1, hdr2], columns=cols)
         disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
 
-        # --- 여기서부터 iloc 안전하게 쓰는 헬퍼 추가 ---
         def _safe_iloc_set(df, r, c, value=""):
             """df.shape 범위 안에서만 iloc 세팅 (벗어나면 그냥 무시)"""
             if 0 <= r < df.shape[0] and 0 <= c < df.shape[1]:
@@ -1222,13 +1220,12 @@ with t3:
 
 
     try:
-        # 1) 데이터
+        
         file_name = st.secrets["sheets"]["f_25"]
         df_src = pd.read_csv(file_name, dtype=str)
         df_src["연도"] = pd.to_numeric(df_src["연도"], errors="coerce")
         df_src["월"]   = pd.to_numeric(df_src["월"],   errors="coerce")
 
-        # 2) 선택 연월
         sel_y = int(st.session_state["year"])
         sel_m = int(st.session_state["month"])
 
@@ -1272,9 +1269,9 @@ with t3:
             if item == "증감" and lower in ("중량",):
                 iv = modules._thousand_out(float(v))
                 if iv > 0:
-                    return f'<span style="color:#1f77b4;">▲{abs(iv):,}</span>'
+                    return f'<span style="color:#1f77b4;">↑{abs(iv):,}</span>'
                 elif iv < 0:
-                    return f'<span style="color:#d62728;">▼{abs(iv):,}</span>'
+                    return f'<span style="color:#d62728;">↓{abs(iv):,}</span>'
                 else:
                     return "0"
 
@@ -1287,12 +1284,22 @@ with t3:
                 body.at[idx, col] = fmt_cell(idx, col, body.at[idx, col])
 
         SPACER = "__spacer__"
-        disp = body.reset_index()
+
+        # ── 인덱스 풀기 ──
+        disp = body.reset_index()   # 구분, 항목 컬럼 생김
+
+        #구분 내 중복 제거
+        dup_mask = disp["구분"].eq(disp["구분"].shift())
+        disp.loc[dup_mask, "구분"] = ""
+
+
         disp.insert(0, SPACER, "")
         cols = disp.columns.tolist()
 
-        hdr1 = ["", "구분", "항목"] + [c[0] for c in cols_mi]
-        hdr2 = ["", "구분", "항목"] + [c[1] for c in cols_mi]
+        hdr1 = ["", "구분", ""] + [c[0] for c in cols_mi]
+        hdr2 = ["", "", ""] + [c[1] for c in cols_mi]
+
+
 
         hdr_df   = pd.DataFrame([hdr1, hdr2], columns=cols)
         disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
@@ -1337,7 +1344,6 @@ with t3:
         for (_, end) in group_edges:
             styles.append({'selector': f'tbody tr:nth-child(n+1) td:nth-child({end})',
                         'props':[('border-right','3px solid gray !important')]})
-
 
 
         display_styled_df(
@@ -1695,8 +1701,7 @@ with t7:
             names=["구분", "항목"]
         )
 
-        # disp_raw가 비어있거나, 일부 구분/항목이 없더라도
-        # 항상 (구분, 항목) 조합이 모두 존재하도록 재구성
+        # 데이터 없어도 표 생성
         if disp_raw.empty:
             disp = pd.DataFrame(index=desired_index).reset_index()
             for c in ["1분기", "2분기", "3분기", "4분기", "연간"]:
@@ -1704,7 +1709,7 @@ with t7:
         else:
             disp = disp_raw.copy()
 
-            # 혹시 모를 컬럼 누락 대비
+            
             for c in ["1분기", "2분기", "3분기", "4분기", "연간"]:
                 if c not in disp.columns:
                     disp[c] = np.nan
@@ -1714,7 +1719,8 @@ with t7:
             disp = disp.reindex(desired_index)
             disp = disp.reset_index()
         # ====== skeleton 보정 끝 ======
-
+        dup_mask = disp["구분"].eq(disp["구분"].shift())
+        disp.loc[dup_mask, "구분"] = ""
         SPACER = "__sp__"
 
         # 이후 로직은 기존과 동일
