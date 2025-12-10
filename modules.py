@@ -2055,13 +2055,15 @@ def _fmt_int(val):
     except Exception:
         return val
 
-def _fmt_pct(val):
+def _fmt_pct1(val):
     if val is None or (isinstance(val, float) and (np.isnan(val) or np.isinf(val))):
         return ""
     try:
+        # 소수점 1자리까지, % 기호는 안 붙임
         return f"{float(val):.1f}"
     except Exception:
         return val
+
 
 def _shift_year_month(year: int, month: int, delta: int) -> tuple[int, int]:
     """
@@ -2077,101 +2079,7 @@ def _shift_year_month(year: int, month: int, delta: int) -> tuple[int, int]:
     return new_year, new_month
 
 
-# ================= 손익 연결 테이블 (연간/전월/당월/누적) =================
-
-def create_connected_profit_table(year: int, month: int, data: pd.DataFrame) -> pd.DataFrame:
-
-    df = _clean_profit_connected_df(data)
-
-    # 회사 / 지표 정의
-    companies = ['본사', '남통', '천진', '태국']   # 타이/태국은 정제에서 '태국' 으로 통일
-    metrics   = ['매출액', '판매량', '영업이익', '순금융비용', '경상이익']
-
-    def msum(f):
-        return f.groupby(['구분2', '구분3'])['실적'].sum()
-
-    # 연간 계획(해당 연도 1~12월 '계획' 합)
-    plan_year = msum(
-        df[(df['연도'] == year) &
-           (df['구분4'] == '계획') &
-           (df['월'].between(1, 12))]
-    )
-
-    # ─ 전월 실적: 같은 해 month-1, 1월이면 이전 해 12월 ─
-    prev_year, prev_month = _shift_year_month(year, month, -1)
-    prev_actual = (
-        df[(df['연도'] == prev_year) &
-           (df['구분4'] == '실적') &
-           (df['월'] == prev_month)]
-        .groupby(['구분2', '구분3'])['실적'].sum()
-    )
-
-    # 당월 계획/실적 (넘어온 year, month 그대로 사용)
-    curr_plan = (
-        df[(df['연도'] == year) &
-           (df['구분4'] == '계획') &
-           (df['월'] == month)]
-        .groupby(['구분2', '구분3'])['실적'].sum()
-    )
-    curr_actual = (
-        df[(df['연도'] == year) &
-           (df['구분4'] == '실적') &
-           (df['월'] == month)]
-        .groupby(['구분2', '구분3'])['실적'].sum()
-    )
-
-    # 누적(해당 연도 1~month, year/month 그대로)
-    cum_plan = (
-        df[(df['연도'] == year) &
-           (df['구분4'] == '계획') &
-           (df['월'] <= month)]
-        .groupby(['구분2', '구분3'])['실적'].sum()
-    )
-    cum_actual = (
-        df[(df['연도'] == year) &
-           (df['구분4'] == '실적') &
-           (df['월'] <= month)]
-        .groupby(['구분2', '구분3'])['실적'].sum()
-    )
-
-    # (회사, 지표) 인덱스 뼈대
-    idx = pd.MultiIndex.from_product([companies, metrics], names=['회사', '지표'])
-
-    def reidx(s: pd.Series) -> pd.Series:
-        # 누락키 0 보정
-        return s.reindex(idx, fill_value=0)
-
-    # 본체 표 구성
-    col_year_plan = f"'{str(year)[-2:]}년 계획"
-    cols = [
-        col_year_plan, '전월', '당월 계획', '당월 실적', '당월 계획대비', '당월 전월대비',
-        '당월누적 계획', '당월누적 실적', '당월누적 계획대비'
-    ]
-    out = pd.DataFrame(index=idx, columns=cols, dtype=float)
-
-    out[col_year_plan]        = reidx(plan_year).values
-    out['전월']               = reidx(prev_actual).values
-    out['당월 계획']          = reidx(curr_plan).values
-    out['당월 실적']          = reidx(curr_actual).values
-    out['당월 계획대비']       = out['당월 실적'] - out['당월 계획']
-    out['당월 전월대비']       = out['당월 실적'] - out['전월']
-    out['당월누적 계획']       = reidx(cum_plan).values
-    out['당월누적 실적']       = reidx(cum_actual).values
-    out['당월누적 계획대비']     = out['당월누적 실적'] - out['당월누적 계획']
-
-    # ===== 합계 행 추가(회사=합계) =====
-    sum_block = out.groupby(level='지표').sum(numeric_only=True)
-    sum_block.index = pd.MultiIndex.from_product([['합계'], sum_block.index], names=['회사', '지표'])
-    out = pd.concat([out, sum_block])
-
-    # 보기 좋게 정렬(회사 순서, 지표 순서)
-    order_idx = pd.MultiIndex.from_product([companies + ['합계'], metrics], names=['회사', '지표'])
-    out = out.reindex(order_idx)
-
-    # 숫자 0.0 → 0 처리
-    out = out.fillna(0.0)
-
-    return out
+#
 
 
 # ================= 손익 연결 요약표 (전전월/전월/당월 + 회사별) =================
@@ -2267,21 +2175,25 @@ def create_connected_profit(year: int, month: int, data: pd.DataFrame) -> pd.Dat
         out.at[metric, '전월 실적 대비'] = _pp(diff_prev)
         out.at[metric, '계획 대비']     = _pp(diff_plan)
 
-    # 퍼센트 행
-    out.at['%(영업)', '전전월 실적'] = _fmt_pct(op_margin_prev2)
-    out.at['%(영업)', '전월 실적']  = _fmt_pct(op_margin_prev)
-    out.at['%(영업)', '당월 계획']  = _fmt_pct(op_margin_plan)
-    out.at['%(영업)', '당월 실적']  = _fmt_pct(op_margin_curr)
+    #음수 괄호 반영    
+    for c in out.columns:
+        out[c] = out[c].apply(_pp)
+   
+    # 퍼센트 행 처리
+    out.at['%(영업)', '전전월 실적'] = _fmt_pct1(op_margin_prev2)
+    out.at['%(영업)', '전월 실적']  = _fmt_pct1(op_margin_prev)
+    out.at['%(영업)', '당월 계획']  = _fmt_pct1(op_margin_plan)
+    out.at['%(영업)', '당월 실적']  = _fmt_pct1(op_margin_curr)
 
-    out.at['%(경상)', '전전월 실적'] = _fmt_pct(or_margin_prev2)
-    out.at['%(경상)', '전월 실적']  = _fmt_pct(or_margin_prev)
-    out.at['%(경상)', '당월 계획']  = _fmt_pct(or_margin_plan)
-    out.at['%(경상)', '당월 실적']  = _fmt_pct(or_margin_curr)
+    out.at['%(경상)', '전전월 실적'] = _fmt_pct1(or_margin_prev2)
+    out.at['%(경상)', '전월 실적']  = _fmt_pct1(or_margin_prev)
+    out.at['%(경상)', '당월 계획']  = _fmt_pct1(or_margin_plan)
+    out.at['%(경상)', '당월 실적']  = _fmt_pct1(or_margin_curr)
 
     # 회사별 퍼센트(당월)
     for i, c in enumerate(companies_order):
-        out.at['%(영업)', c] = _fmt_pct(comp_op_margin[i])
-        out.at['%(경상)', c] = _fmt_pct(comp_or_margin[i])
+        out.at['%(영업)', c] = _fmt_pct1(comp_op_margin[i])
+        out.at['%(경상)', c] = _fmt_pct1(comp_or_margin[i])
 
     # 퍼센트 증감(포인트)
     def pp_delta(a, b):
@@ -2299,6 +2211,8 @@ def create_connected_profit(year: int, month: int, data: pd.DataFrame) -> pd.Dat
 
     # 인덱스 재정렬(가독성)
     out.index = metrics_order
+
+
 
     return out
 
@@ -4678,11 +4592,7 @@ def _clean(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def normalize_row_order(row_order_spec):
-    """
-    row_order_spec에서 ('', item)은 직전 '구분'을 상속시키고,
-    (구분, '')은 섹션 헤더행으로 표시.
-    반환: (정규화된 리스트, 헤더행 set)
-    """
+
     norm = []
     header_rows = set()
     cur_group = None
@@ -5182,10 +5092,7 @@ def fx_export_table(df_long: pd.DataFrame, year: int, month: int):
 
 
 ##### 포스코 對 JFE 입고가격 #####
-# modules/posco_jfe_price.py
-import pandas as pd
-import numpy as np
-import re
+
 from typing import Sequence, Tuple, List
 
 KIND_ORDER = ["탄소강", "합금강", ""]
@@ -5260,9 +5167,8 @@ def build_posco_jfe_price_wide(
     - 연도별 12월 = 'YYYY년 월평균', 동적 3칸 = 전전월/전월/선택월 'M월(YYYY)'
     """
 
-    # ★ 여기에서 선택연도 기준 4개 연도 자동 계산
+    # 선택연도 기준 자동계산
     if monthly_years is None:
-        # 예: sel_y=2026 → [2022, 2023, 2024, 2025]
         monthly_years = [sel_y - 4, sel_y - 3, sel_y - 2, sel_y - 1]
 
     d = df.copy()
@@ -5348,7 +5254,7 @@ def build_posco_jfe_price_wide(
     for f in frames:
         wide = f if wide is None else wide.join(f, how="outer")
 
-    # 4) '포스코 할인단가(원)' 행 보장 + 항상 첫 번째로
+    # 4) '포스코 할인단가(원)'  항상 첫행
     top_row = ("", "포스코 할인단가(원)", "")
 
     if wide is None or wide.empty:
@@ -5362,13 +5268,41 @@ def build_posco_jfe_price_wide(
     ordered_rest = [idx for idx in _sort_index(wide.index) if idx != top_row]
     wide = wide.reindex([top_row] + ordered_rest)
 
-    # 5) 컬럼 보장 + 순서 고정 (중복 블록 하나로 정리)
+    # 5) 컬럼 보장 + 순서 고정 )
     for c in col_order:
         if c not in wide.columns:
             wide[c] = np.nan
     wide = wide[col_order]
 
+    # 6) kind/party 표시 정리
+    #   - kind: (탄소강, 합금강) 블록마다 첫 행만 표시
+    #   - party: 각 kind 블록 안에서 party별 첫 행만 표시
+    idx_df = wide.index.to_frame(index=False)   # 컬럼: kind, party, item
+
+    # 6-1) party: (kind, party) 조합별 첫 행만 표시
+    for k in ["탄소강", "합금강"]:
+        mask_kind = idx_df["kind"] == k
+        parties = idx_df.loc[mask_kind, "party"].unique()
+        for p in parties:
+            mask = mask_kind & (idx_df["party"] == p)
+            idxs = idx_df.index[mask].tolist()
+            if len(idxs) > 1:
+                # 같은 kind, 같은 party 안에서 첫 행만 party 표시, 나머진 공백
+                idx_df.loc[idxs[1:], "party"] = ""
+
+    # 6-2) kind: kind 블록 안에서 첫 행만 표시
+    for k in ["탄소강", "합금강"]:
+        mask_kind = idx_df["kind"] == k
+        idxs = idx_df.index[mask_kind].tolist()
+        if len(idxs) > 1:
+            idx_df.loc[idxs[1:], "kind"] = ""
+
+    wide.index = pd.MultiIndex.from_frame(idx_df)
+
     return wide, col_order, hdr1_labels, hdr2_labels
+
+
+
 
 
 
@@ -5433,11 +5367,17 @@ def _metric_row(sub: str, is_pct: bool):
     if sub == "평균단가": return "평균단가"
     return "값"
 
-def _month_shift(y: int, m: int, delta: int):
-    t = y * 12 + (m - 1) + delta
-    ny = t // 12
-    nm = t % 12 + 1
-    return int(ny), int(nm)
+def _month_shift(year: int, month: int, delta: int) -> tuple[int, int]:
+    """
+    year, month에서 delta개월(음수 가능) 만큼 이동한 (연도, 월)을 반환.
+    예: (2025, 1, -2) -> (2024, 11)
+    """
+    # year-month 를 '전체 개월 수'로 바꾸기 (0 기반 월로 변환)
+    total = year * 12 + (month - 1) + delta
+    new_year = total // 12
+    new_month = total % 12 + 1
+    return new_year, new_month
+
 
 
 
@@ -5462,8 +5402,8 @@ def build_posco_jfe_wide(
       - None 인 경우: sel_y 기준으로 [sel_y-3, sel_y-2, sel_y-1] 사용
       - 직접 리스트/튜플로 넣으면 그 연도들 사용
     """
+    
 
-    # ★ 선택연도 기준 3개 연도 자동 계산 (전전전연도, 전전연도, 전년도)
     if monthly_years is None:
         monthly_years = [sel_y - 3, sel_y - 2, sel_y - 1]
 
@@ -5489,6 +5429,7 @@ def build_posco_jfe_wide(
     col_order = []
     hdr1_labels = []
     hdr2_labels = []
+    
 
     # 1) 과거 연도들: 12월 = 월평균 (구분3='월평균'만)
     d_base = d[d["구분3"] == "월평균"]
@@ -5541,15 +5482,48 @@ def build_posco_jfe_wide(
     for f in frames:
         wide = f if wide is None else wide.join(f, how="outer")
 
-    # --- JFE 사용비중 자동 계산 (원천에 없으면 계산해서 채움) ---
+    # --- 공통: 숫자 변환 함수 ---
     def _safe(x):
         try:
             return float(x)
         except:
             return np.nan
 
+    # --- (추가) 탄소강/합금강 포스코·JFE 비중 계산 ---
+    #   각 kind별로:
+    #     포스코 비중 = 포스코 중량 / (포스코+JFE 중량) * 100
+    #     JFE 비중   = JFE 중량   / (포스코+JFE 중량) * 100
+    if wide is not None and not wide.empty:
+        for kind in ["탄소강", "합금강"]:
+            idx_pos_w = (kind, "포스코", "중량")
+            idx_jfe_w = (kind, "JFE",   "중량")
+            idx_pos_s = (kind, "포스코", "비중")
+            idx_jfe_s = (kind, "JFE",   "비중")
+
+            # 비중 행이 없으면 생성
+            for idx in [idx_pos_s, idx_jfe_s]:
+                if idx not in wide.index:
+                    wide.loc[idx, :] = np.nan
+
+            for col in wide.columns:
+                pos_w = _safe(wide.loc[idx_pos_w, col]) if idx_pos_w in wide.index else np.nan
+                jfe_w = _safe(wide.loc[idx_jfe_w, col]) if idx_jfe_w in wide.index else np.nan
+                denom = pos_w + jfe_w
+
+                if denom and not np.isnan(denom) and denom != 0:
+                    pos_share = pos_w / denom * 100.0
+                    jfe_share = jfe_w / denom * 100.0
+                else:
+                    pos_share = np.nan
+                    jfe_share = np.nan
+
+                # ✅ 항상 계산값으로 덮어쓰기 (지금은 0%라서 아예 다시 계산해주기 위함)
+                wide.loc[idx_pos_s, col] = pos_share
+                wide.loc[idx_jfe_s, col] = jfe_share
+
+    # --- JFE 사용비중 자동 계산 (탄소강+합금강 전체 기준) ---
     # 현재 wide는 여러 metric이 섞여 있으므로, '중량' 행만 집계해서 비중 계산
-    idxs_jfe = [(k, "JFE", "중량") for k in ["탄소강", "합금강"]]
+    idxs_jfe = [(k, "JFE",   "중량") for k in ["탄소강", "합금강"]]
     idxs_pos = [(k, "포스코", "중량") for k in ["탄소강", "합금강"]]
 
     jfe_share_col = {}
@@ -5562,7 +5536,6 @@ def build_posco_jfe_wide(
     # 결과를 행 ("", "JFE 사용비중", "비중") 에 반영 (없으면 생성, 있으면 NaN만 채움)
     jfe_row = ("", "JFE 사용비중", "비중")
     if wide is None or wide.empty:
-        # 병합 직후 wide가 비어버린 경우 골격 생성
         wide = pd.DataFrame(index=pd.Index([jfe_row]))
     if jfe_row not in wide.index:
         wide.loc[jfe_row, :] = np.nan
@@ -5570,6 +5543,7 @@ def build_posco_jfe_wide(
     for col, val in jfe_share_col.items():
         if pd.isna(wide.at[jfe_row, col]):
             wide.at[jfe_row, col] = val
+
 
     # 4) 보기 좋은 행 순서
     desired = []
@@ -5596,7 +5570,36 @@ def build_posco_jfe_wide(
             wide[c] = np.nan
     wide = wide[col_order]
 
+    # 6) kind / sub 표시 정리
+    #   - kind: (탄소강, 합금강) 블록마다 첫 행만 표시
+    #   - sub : 각 kind 블록 안에서 (포스코, JFE)별 첫 행만 표시
+    idx_df = wide.index.to_frame(index=False)  # 컬럼: kind, sub, metric
+
+    # 6-1) sub 정리: (kind, sub) 조합별로 첫 행만 sub 표시
+    for k in ["탄소강", "합금강"]:
+        mask_kind = idx_df["kind"] == k
+        if not mask_kind.any():
+            continue
+        # 이 kind에서 등장하는 sub 목록
+        for s in ["포스코", "JFE"]:
+            mask = mask_kind & (idx_df["sub"] == s)
+            idxs = idx_df.index[mask].tolist()
+            if len(idxs) > 1:
+                # 같은 kind, 같은 sub 안에서 첫 행만 sub 유지, 나머지는 공백
+                idx_df.loc[idxs[1:], "sub"] = ""
+
+    # 6-2) kind 정리: kind 블록 안에서 첫 행만 kind 표시
+    for k in ["탄소강", "합금강"]:
+        mask_kind = idx_df["kind"] == k
+        idxs = idx_df.index[mask_kind].tolist()
+        if len(idxs) > 1:
+            idx_df.loc[idxs[1:], "kind"] = ""
+
+    # 수정된 인덱스를 다시 MultiIndex로 적용
+    wide.index = pd.MultiIndex.from_frame(idx_df)
+
     return wide, col_order, hdr1_labels, hdr2_labels
+
 
 
 
@@ -5800,6 +5803,8 @@ def build_maker_receipt_wide(
 
     return wide, cols_mi
 
+
+
 ##### 제조 가공비 #####
 
 from typing import Tuple, Dict, Optional
@@ -5879,7 +5884,7 @@ def _to_wide(df_src: pd.DataFrame) -> pd.DataFrame:
     return pv[["연도", "월", "항목", "포항", "충주", "충주2", "계"]]
 
 
-# ===================== 월 스냅샷(요청된 행 순서로) =====================
+# 구분 고정
 _ORDER = [
     "부재료비",
     "급료와임금",
@@ -5908,8 +5913,8 @@ _LABOR = ["급료와임금", "상여금", "잡급", "퇴직급여충당금"]
 _OH    = ["전력비","수도료","감가상각비","수선비","소모품비","복리후생비",
           "지급임차료","지급수수료","외주용역비","외주가공비","기타"]
 
-def _month_snapshot(df_wide: pd.DataFrame, y: int, m: int) -> pd.DataFrame:
-    """특정 연월의 요구 행 순서 스냅샷 생성"""
+def _month_list(df_wide: pd.DataFrame, y: int, m: int) -> pd.DataFrame:
+    """특정 연월의 요구 """
     d = df_wide[(df_wide["연도"] == y) & (df_wide["월"] == m)].copy()
 
     # 기본 항목 합산
@@ -5982,8 +5987,8 @@ def build_mfg_cost_table(df_src: pd.DataFrame, sel_y: int, sel_m: int):
     wide = _to_wide(df_src)
 
     prev_y, prev_m = month_shift(sel_y, sel_m, -1)
-    prev_snap = _month_snapshot(wide, prev_y, prev_m)
-    curr_snap = _month_snapshot(wide, sel_y, sel_m)
+    prev_snap = _month_list(wide, prev_y, prev_m)
+    curr_snap = _month_list(wide, sel_y, sel_m)
 
     disp = _make_table(prev_snap, curr_snap)
     meta = dict(prev_y=prev_y, prev_m=prev_m, sel_y=sel_y, sel_m=sel_m)
@@ -6105,7 +6110,7 @@ def _to_wide(df_src: pd.DataFrame) -> pd.DataFrame:
     return pv[["연도", "월", "항목", "포항", "충주", "충주2", "계"]]
 
 
-# =============== 제조 가공비: 스냅샷/테이블 ===============
+#구분 고정
 _ORDER = [
     "부재료비",
     "급료와임금",
@@ -6133,8 +6138,8 @@ _LABOR = ["급료와임금", "상여금", "잡급", "퇴직급여충당금"]
 _OH    = ["전력비","수도료","감가상각비","수선비","소모품비","복리후생비",
           "지급임차료","지급수수료","외주용역비","외주가공비","기타"]
 
-def _month_snapshot(df_wide: pd.DataFrame, y: int, m: int) -> pd.DataFrame:
-    """특정 연월의 요구 행 순서 스냅샷 생성"""
+def _month_list(df_wide: pd.DataFrame, y: int, m: int) -> pd.DataFrame:
+    """특정 연월의 요구 행 순서 생성"""
     d = df_wide[(df_wide["연도"] == y) & (df_wide["월"] == m)].copy()
 
     # 기본 항목 합산
@@ -6199,8 +6204,8 @@ def _make_table(prev_snap: pd.DataFrame, curr_snap: pd.DataFrame) -> pd.DataFram
 def build_mfg_cost_table(df_src: pd.DataFrame, sel_y: int, sel_m: int):
     wide = _to_wide(df_src)
     prev_y, prev_m = month_shift(sel_y, sel_m, -1)
-    prev_snap = _month_snapshot(wide, prev_y, prev_m)
-    curr_snap = _month_snapshot(wide, sel_y, sel_m)
+    prev_snap = _month_list(wide, prev_y, prev_m)
+    curr_snap = _month_list(wide, sel_y, sel_m)
     disp = _make_table(prev_snap, curr_snap)
     meta = dict(prev_y=prev_y, prev_m=prev_m, sel_y=sel_y, sel_m=sel_m)
     return disp, meta
@@ -6280,7 +6285,7 @@ def _sgna_from_base_series(base: pd.Series, sales_qty_override: Optional[float]=
     sales_key = _find_sales_key(base.index)
     sales_from_base = float(base.get(sales_key, 0.0)) if sales_key else 0.0
 
-    # 오버라이드가 있으면 우선 사용
+
     if sales_qty_override is not None and not pd.isna(sales_qty_override) and sales_qty_override != 0:
         sales_qty = float(sales_qty_override)
     else:
@@ -6307,8 +6312,8 @@ def _sgna_from_base_series(base: pd.Series, sales_qty_override: Optional[float]=
     return pd.Series(out).reindex(_SGNA_ORDER)
 
 
-def _sgna_snapshot(df_wide: pd.DataFrame, y: int, m: int) -> pd.Series:
-    """숫자월 데이터로 특정 연월 스냅샷(행=_SGNA_ORDER)"""
+def _sgna_list(df_wide: pd.DataFrame, y: int, m: int) -> pd.Series:
+    """숫자월 데이터로 특정 연월 순서 (행=_SGNA_ORDER)"""
     d = df_wide[(df_wide["연도"]==y) & (df_wide["월"]==m)]
     base = d.groupby("항목")["계"].sum()
     return _sgna_from_base_series(base)
@@ -6317,16 +6322,7 @@ import numpy as np
 import pandas as pd
 
 def build_sgna_table(df_src: pd.DataFrame, sel_y: int, sel_m: int):
-    """
-    **STRICT 기본 원칙 유지**:
-      - 값 계산은 가능하면 '월=월평균' 행으로만 한다.
-      - 다만, 선택연도 기준 전전연도/전연도 컬럼은
-        월평균 데이터가 없어도 일단 표에 생성되게 한다.
-        → 값은 NaN(표에서는 빈칸)으로 표시.
-    구성:
-      - 월평균: sel_y-2, sel_y-1 (두 연도)
-      - 나머지: (m-2), (m-1), (m), 전월대비
-    """
+
 
     # 1) 숫자월 데이터(최근 3개월/전월대비)
     wide = _to_wide_sgna(df_src)
@@ -6351,9 +6347,9 @@ def build_sgna_table(df_src: pd.DataFrame, sel_y: int, sel_m: int):
     # 3) 최근 3개월 + 전월대비
     m2_y, m2_m = month_shift(sel_y, sel_m, -2)
     m1_y, m1_m = month_shift(sel_y, sel_m, -1)
-    s_m2 = _sgna_snapshot(wide, m2_y, m2_m)
-    s_m1 = _sgna_snapshot(wide, m1_y, m1_m)
-    s_m0 = _sgna_snapshot(wide, sel_y, sel_m)
+    s_m2 = _sgna_list(wide, m2_y, m2_m)
+    s_m1 = _sgna_list(wide, m1_y, m1_m)
+    s_m0 = _sgna_list(wide, sel_y, sel_m)
     diff = s_m0 - s_m1
 
     # 4) 본문 데이터(월/전월대비부터 넣고, 월평균은 앞에 삽입)
@@ -8005,7 +8001,7 @@ def create_abroad_profit_month_block_table(df_raw: pd.DataFrame, year: int, mont
         axis=1
     ).reset_index()
 
-    # 연도에 아예 데이터가 없으면 → 템플릿만 리턴
+
     if base.empty:
         return _build_empty_table()
 
@@ -8079,7 +8075,7 @@ def create_abroad_profit_month_block_table(df_raw: pd.DataFrame, year: int, mont
     for sec in sections:
         part = base[base["대분류"] == sec].copy()
         if part.empty:
-            # 이 대분류에 데이터가 없어도, 판매량이면 템플릿 행 만들어서 넣어줌
+
             if sec == "판매량":
                 tpl = pd.DataFrame({
                     "대분류": ["판매량"] * len(sales_qty_order),
@@ -8130,44 +8126,7 @@ def create_inv_table_from_company(
     data: pd.DataFrame,
     company_name: str,
 ) -> pd.DataFrame:
-    """
-    재고자산 현황 표 생성용 함수.
 
-    Parameters
-    ----------
-    year : int
-        선택 기준연도 (예: 2025)
-    month : int
-        선택 기준월 (예: 8)
-    data : pd.DataFrame
-        원본 데이터
-        컬럼: ['구분1','구분2','구분3','구분4','연도','월','실적'] 가정
-    company_name : str
-        회사명 (구분1 값)
-
-    표 구조
-    -------
-    행 인덱스: (구분2, 구분3)
-        - 구분2: 원재료 / 재공 / 제품 / 총재고
-        - 구분3: POSCO / LOCAL / 기타 / 소계 / ''(총재고)
-
-    열:
-        'YY년말' 4개   : (year-4)년말 ~ (year-1)년말 (12월 기준)
-        최근 3개월     : (전전월, 전월, 당월) → 월만 '6월','7월','8월' 형태
-        증량           : 당월 - 전월
-        증감률         : (증량 / 전월) * 100 (전월이 0이면 NaN)
-
-    attrs
-    -----
-    res.attrs['company']      = company_name
-    res.attrs['base_year']    = year (선택연도)
-    res.attrs['used_year']    = 당월 연도
-    res.attrs['used_month']   = 당월 월
-    res.attrs['prev_year']    = 전월 연도
-    res.attrs['prev_month']   = 전월 월
-    res.attrs['prev2_year']   = 전전월 연도
-    res.attrs['prev2_month']  = 전전월 월
-    """
 
     # 0) 기본 컬럼 체크
     required_cols = ['구분1', '구분2', '구분3', '연도', '월', '실적']
@@ -8307,9 +8266,8 @@ def create_inv_table_from_company(
 
     res = pd.concat([res, pd.DataFrame([total_row])], ignore_index=True)
 
-    # ------------------------------
-    # 🔥 (중요) 구분2는 블록마다 1번만 출력되도록 후처리
-    # ------------------------------
+    # 구분2는 블록마다 1번만 출력되도록 
+
     res = res.reset_index(drop=True)
 
     for cat in ['원재료', '재공', '제품', '총재고']:
@@ -8341,8 +8299,6 @@ def create_inv_table_from_company(
 
 
 ##### 해외법인실적 부적합 및 장기재고 현황 #####
-from typing import List
-
 
 def create_defect_longinv_table_from_company(
     year: int,
@@ -8525,11 +8481,10 @@ def create_defect_longinv_table_from_company(
     )
     res = res[col_order]
 
-    # 🔥 구분2는 블록마다 한 번만 표시 (인덱스로 바꾸기 전에 처리 X, 인덱스로 바꾼 뒤 처리)
-    # 1) 먼저 MultiIndex로 변환
+    # 구분2는 블록마다 한 번만 표시
     res = res.set_index(['구분2', '구분3'])
 
-    # 2) 인덱스를 DataFrame으로 풀어서 값 수정
+
     idx_df = res.index.to_frame(index=False)   # 컬럼: 구분2, 구분3
 
     for cat in ['부적합재고', '장기재고']:
@@ -8561,8 +8516,7 @@ def create_defect_longinv_table_from_company(
 
 ##### 해외법인실적 연령별 재고현황 #####
 
-import pandas as pd
-from typing import List
+
 
 
 def create_age_table_from_company(
@@ -8573,11 +8527,7 @@ def create_age_table_from_company(
 ) -> pd.DataFrame:
 
 
-    # 0) 컬럼 체크
-    required_cols = ['구분1', '구분2', '구분3', '구분4', '연도', '월', '실적']
-    for c in required_cols:
-        if c not in data.columns:
-            raise ValueError(f"'{c}' 컬럼이 없습니다. 원본 스키마를 확인하세요.")
+
 
     # 1) 회사 필터
     df_src = data.copy()
@@ -8744,6 +8694,20 @@ def create_age_table_from_company(
     col_order = ['구분2', '구분3'] + year_cols + [col_prev2, col_prev, col_used, col_money, col_rate]
     res = res[col_order].set_index(['구분2', '구분3'])
 
+    # ── 여기부터 추가: 구분2는 블록마다 첫 행에만 표시 ──
+    idx_df = res.index.to_frame(index=False)   # 컬럼: 구분2, 구분3
+
+    # 원재료 / 재공 / 제품 / 합계 별로 첫 행을 제외하고 구분2를 공백 처리
+    for cat in ['원재료', '재공', '제품', '합계']:
+        mask = idx_df['구분2'] == cat
+        idxs = idx_df.index[mask].tolist()
+        if len(idxs) > 1:
+            idx_df.loc[idxs[1:], '구분2'] = ""   # 첫 행만 값 유지, 나머지는 공백
+
+    # 수정된 인덱스로 다시 MultiIndex 구성
+    res.index = pd.MultiIndex.from_frame(idx_df)
+    # ── 여기까지 추가 ──
+
     # 10) 메타 정보
     res.attrs['company'] = company_name
     res.attrs['base_year'] = req_y
@@ -8760,8 +8724,7 @@ def create_age_table_from_company(
     return res
 
 
-import pandas as pd
-from typing import List
+
 
 
 def create_ar_status_table_from_company(
@@ -9484,7 +9447,8 @@ def build_f95(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
                 raw = vals.sum()
                 val = raw / 1_000_000.0     # 백만원
             elif rtype == "qty":
-                val = vals.sum()            # 톤
+                raw = vals.sum()
+                val = raw / 1_000.0
             elif rtype == "pct":
                 val = vals.mean()           # 단순 평균
             else:
@@ -10532,21 +10496,13 @@ def build_f101(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
 
     df = df_src.copy()
 
-    # 헤더에 BOM / 공백 붙어 있는 경우 제거
-    df.columns = [str(c).replace("\ufeff", "").strip() for c in df.columns]
 
-    # 필수 컬럼 확인
-    required = ["구분1", "구분2", "연도", "월", "구분3", "실적"]
-    missing = [c for c in required if c not in df.columns]
-    if missing:
-        raise ValueError(f"필수 컬럼 누락: {missing} / 현재 컬럼: {list(df.columns)}")
 
     df["실적"] = df["실적"].apply(_to_number)
     df["연도"] = df["연도"].astype(int)
     df["월"]   = df["월"].astype(int)
 
-    # B급 제외 (정상/매입매출만 사용)
-    df = df[df["구분1"].isin(["정상", "매입매출"])]
+
 
     # long → wide 피벗
     pivot = (
@@ -10564,10 +10520,8 @@ def build_f101(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
         if col not in pivot.columns:
             pivot[col] = 0.0
 
-    # ──────────────────────────────────
-    # 2. 기간별 서브셋 (누적 / 전월 / 당월)
-    # ──────────────────────────────────
-    # 누적 (YTD)
+
+    #누적
     mask_ytd = (pivot["연도"] == year) & (pivot["월"] <= month)
     sub_ytd = pivot.loc[mask_ytd].copy()
 
@@ -10578,7 +10532,7 @@ def build_f101(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
         .nunique()
     )
 
-    # 전월 (연도 넘어가는 것도 고려)
+    # 연도 넘어갈때 문제 해결
     if month == 1:
         prev_year, prev_month = year - 1, 12
     else:
@@ -10592,10 +10546,7 @@ def build_f101(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
     sub_cur = pivot.loc[mask_cur].copy()
     
 
-    # ──────────────────────────────────
-    # 3. 기간별 집계 helper
-    #   - avg_monthly=True 이면 매출/이익을 "월평균"으로 환산
-    # ──────────────────────────────────
+
     def prepare_period(
         sub: pd.DataFrame,
         avg_monthly: bool = False,
@@ -10654,7 +10605,7 @@ def build_f101(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
     team: str | None,  # None 이면 합계행
 ) -> dict:
 
-        # ✅ "중계"를 "총계"로 통일해서 처리
+        #중계 총계 통일
         if section == "중계":
             section = "총계"
 
@@ -10717,9 +10668,7 @@ def build_f101(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
 
         return row
 
-    # ──────────────────────────────────
-    # 5. 행 생성 (정상 → 매입매출 → 중계 → 종합계)
-    # ──────────────────────────────────
+
     teams = ["선재영업팀", "봉강영업팀", "부산영업소", "대구영업소", "글로벌영업팀"]
     rows: list[dict] = []
 
@@ -10733,23 +10682,21 @@ def build_f101(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
     for t in teams:
         rows.append(make_row("매입매출", t, "", t))
 
-    # 중계 (정상 + 매입매출)
+    # 총계
     rows.append(make_row("중계", None, "총계", ""))
     for t in teams:
         rows.append(make_row("총계", t, "", t))
 
-    # 종합계 (전체 한 줄)
+    # 총합계
     rows.append(make_row("총계", None, "총합계", ""))
 
     df_out = pd.DataFrame(rows)
 
-    # ──────────────────────────────────
-    # 6. 컬럼 순서 정리
-    # ──────────────────────────────────
     metrics_order = [
         "판매중량", "판매단가", "영업이익", "영업이익율",
         "인원", "인당중량", "인당영업이익",
     ]
+
     cols_order = ["구분1", "구분2"] + [
         f"{p}{m}"
         for p in ["누적_", "전월_", "당월_"]
@@ -10758,9 +10705,7 @@ def build_f101(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
     cols_order = [c for c in cols_order if c in df_out.columns]
     df_out = df_out[cols_order]
 
-    # ──────────────────────────────────
-    # 7. 단위 변환 (톤 / 백만원 등)
-    # ──────────────────────────────────
+
     def _round_1k(x):
         try:
             v = float(x)
@@ -10797,3 +10742,4 @@ def build_f101(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
         df_out[c] = df_out[c].round(0).astype(int, errors="ignore")
 
     return df_out
+
