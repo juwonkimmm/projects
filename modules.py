@@ -2279,7 +2279,6 @@ def create_cashflow_by_gubun(year: int, month: int, data: pd.DataFrame) -> pd.Da
     used_year = year
     used_month = month
 
-    # ✅ 전월 계산 (연도 경계 처리)
     prev_year = used_year
     prev_month = used_month - 1
     if prev_month == 0:
