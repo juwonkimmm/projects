@@ -198,7 +198,8 @@ thead {
 # 화면 구성
 st.markdown('<div class="centered">', unsafe_allow_html=True)
 st.markdown(f"## {this_year}년 {current_month}월 비용 분석")
-t1, t2, t3, t4, t5, t6, t7 = st.tabs(['사용량 원단위 추이_포항', '사용량 원단위 추이_충주1','사용량 원단위 추이_충주2','단가 추이', '월 평균 클레임 지급액','당월 클레임 내역','영업외 비용 내역'])
+# t1, t2, t3, t4, t5, t6, t7 = st.tabs(['사용량 원단위 추이_포항', '사용량 원단위 추이_충주1','사용량 원단위 추이_충주2','단가 추이', '월 평균 클레임 지급액','당월 클레임 내역','영업외 비용 내역'])
+t1, t2, t3= st.tabs(['사용량 원단위 추이', '클레임 현황','영업외 비용 내역'])
 st.divider()
 #------------------------------------------------------------------------------------------------
 
@@ -208,6 +209,10 @@ st.divider()
 
 
 with t1:
+    display_memo('f_43', this_year, current_month)
+
+    st.divider()
+
     st.markdown("### 1) 부재료 사용량 원단위 (포항)", unsafe_allow_html=True)
 
     file_name = st.secrets["sheets"]["f_43"]
@@ -287,7 +292,7 @@ with t1:
     )
 
 
-    st.divider()
+    # st.divider()
     unit = "<div style='text-align:left; font-size:15px; color:#000000;'>※ 사용량원단위 : 부재료사용량/공정처리량</div>"
     st.markdown(unit, unsafe_allow_html=True)
 
@@ -326,7 +331,7 @@ with t1:
             textposition=textpos,
             textfont=dict(size=11),
             hovertemplate="값=%{y:.1f}<extra></extra>",
-            connectgaps=False,   # ✅ NaN 구간은 끊어서 표시 (기본값이지만 명시)
+            connectgaps=False,   
         ))
 
     fig.update_traces(line=dict(width=3.5))
@@ -349,13 +354,13 @@ with t1:
     )
 
     fig.update_xaxes(
-        type="category",          # ✅ 카테고리 축으로 고정
-        categoryorder="array",    # 우리가 준 순서 그대로
+        type="category",         
+        categoryorder="array",   
         categoryarray=x,
         tickmode="array",
         tickvals=x,
         ticktext=x,
-        tickangle=-45,            # 필요하면 라벨 기울기 조정
+        tickangle=-45,           
         showgrid=False,
     )
 
@@ -370,19 +375,11 @@ with t1:
     st.plotly_chart(fig, use_container_width=True)
 
 
-    display_memo('f_43', this_year, current_month)
 
 
+    st.divider()
 
 
-
-
-
-# =========================
-#사용량 원단위 추이_충주1
-# =========================
-
-with t2:
     st.markdown("### 2) 부재료 사용량 원단위 (충주1)", unsafe_allow_html=True)
 
     file_name = st.secrets["sheets"]["f_43"]
@@ -407,7 +404,7 @@ with t2:
     df_show = df_table.reset_index()
     df_show.columns.name = None
 
-    # ✅ 첫 번째 컬럼(충주1 항목명)을 제외한 나머지를 월별 숫자 컬럼으로 사용
+
     month_cols = df_show.columns[1:]
     df_show[month_cols] = df_show[month_cols].apply(pd.to_numeric, errors="coerce")
     numeric_cols = month_cols
@@ -452,7 +449,7 @@ with t2:
         unsafe_allow_html=True
     )
 
-    st.divider()
+    # st.divider()
     unit = "<div style='text-align:left; font-size:15px; color:#000000;'>※ 사용량원단위 : 부재료사용량/공정처리량</div>"
     st.markdown(unit, unsafe_allow_html=True)
 
@@ -527,7 +524,7 @@ with t2:
         gridcolor="rgba(0,0,0,0.18)",
     )
 
-    # (선택) 여백 살짝: y범위 패딩
+
     all_vals = pd.to_numeric(df_plot.values.ravel(), errors="coerce").astype(float)
     finite = np.isfinite(all_vals)
     if finite.any():
@@ -538,11 +535,8 @@ with t2:
 
     st.plotly_chart(fig, use_container_width=True)
 
+    st.divider()
 
-# =========================
-#사용량 원단위 추이_충주2
-# =========================
-with t3:
     st.markdown("### 3) 부재료 사용량 원단위 (충주2)", unsafe_allow_html=True)
 
     file_name = st.secrets["sheets"]["f_43"]
@@ -567,7 +561,7 @@ with t3:
     df_show = df_table.reset_index()
     df_show.columns.name = None
 
-    # ✅ 첫 번째 컬럼(충주2 항목명)을 제외한 나머지를 월별 숫자 컬럼으로 사용
+
     month_cols = df_show.columns[1:]
     df_show[month_cols] = df_show[month_cols].apply(pd.to_numeric, errors="coerce")
     numeric_cols = month_cols
@@ -612,7 +606,7 @@ with t3:
         unsafe_allow_html=True
     )
 
-    st.divider()
+    # st.divider()
     unit = "<div style='text-align:left; font-size:15px; color:#000000;'>※ 사용량원단위 : 부재료사용량/공정처리량</div>"
     st.markdown(unit, unsafe_allow_html=True)
 
@@ -700,11 +694,9 @@ with t3:
     st.plotly_chart(fig, use_container_width=True)
 
 
+    st.divider()
 
-# =========================
-#단가 추이
-# =========================
-with t4:
+
     st.markdown("### 4) 단가 추이", unsafe_allow_html=True)
 
     file_name = st.secrets["sheets"]["f_46"]
@@ -768,14 +760,14 @@ with t4:
         unsafe_allow_html=True
     )
 
-    st.divider()
+
 
 
     # ----- 그래프 불러오기 -----
     df_plot = df_table.copy()
     df_plot = df_plot.apply(pd.to_numeric, errors="coerce")
 
-    # ✅ df_table 컬럼(연속 12개월)을 그대로 x축으로 사용
+
     months = df_plot.columns.tolist()   # 예: ['24.12','25.01', ...]
     x = months
 
@@ -876,7 +868,6 @@ with t4:
         )
     )
 
-    # ✅ x축: 두 패널 모두 같은 카테고리/순서/라벨 강제
     for r in (1, 2):
         fig.update_xaxes(
             type="category",
@@ -890,7 +881,6 @@ with t4:
             row=r, col=1,
         )
 
-    # y축: 위 패널(나머지 네 개) / 아래 패널(질소·전력)
     fig.update_yaxes(
         range=y1_range,
         showticklabels=False,
@@ -910,139 +900,149 @@ with t4:
 
     st.plotly_chart(fig, use_container_width=True)
 
+    display_memo('f_46', this_year, current_month)
 
 
+with t2:
+    col_left, col_mid, col_right = st.columns([1, 0.05, 1])
 
+    with col_left:
+        st.markdown(f"###  1) 월 평균 클레임 지급액</h4>", unsafe_allow_html=True)
 
+        # 1) 모듈에서 연도별 피벗 데이터 가져오기
+        pivot = modules.update_monthly_claim_form()   # index: 구분2, columns: 연도(int)
 
-# =========================
-#월 평균 클레임 지급액
-# =========================
-with t5:
-    st.markdown(f"###  5) 월 평균 클레임 지급액</h4>", unsafe_allow_html=True)
+        # 2) 선택 연도(this_year) 기준으로 전전전/전전/전/현 4개 연도 결정
+        base_year = int(this_year)
+        target_years = [base_year - 3, base_year - 2, base_year - 1, base_year]
+        col_labels  = [f"{str(y)[2:]}년" for y in target_years]   # "23년", "24년" ...
 
-    # 1) 모듈에서 연도별 피벗 데이터 가져오기
-    pivot = modules.update_monthly_claim_form()   # index: 구분2, columns: 연도(int)
+        # 3) 구분2 인덱스 기준으로 빈 DF 생성
+        idx = sorted(pivot.index.tolist())
+        df = pd.DataFrame(0.0, index=idx, columns=col_labels)
 
-    # 2) 선택 연도(this_year) 기준으로 전전전/전전/전/현 4개 연도 결정
-    base_year = int(this_year)
-    target_years = [base_year - 3, base_year - 2, base_year - 1, base_year]
-    col_labels  = [f"{str(y)[2:]}년" for y in target_years]   # "23년", "24년" ...
+        # 4) 연도별 값 채우기 (없는 연도는 0 유지)
+        for y, label in zip(target_years, col_labels):
+            if y in pivot.columns:
+                df[label] = pivot[y].reindex(df.index).fillna(0).round(0)  # 수치 반올림
+            else:
+                df[label] = 0.0
 
-    # 3) 구분2 인덱스 기준으로 빈 DF 생성
-    idx = sorted(pivot.index.tolist())
-    df = pd.DataFrame(0.0, index=idx, columns=col_labels)
-
-    # 4) 연도별 값 채우기 (없는 연도는 0 유지)
-    for y, label in zip(target_years, col_labels):
-        if y in pivot.columns:
-            df[label] = pivot[y].reindex(df.index).fillna(0).round(0)  # 수치 반올림
+        # 5) 합계 행 추가 (앞 5개만 합칠지, 전체 합칠지 기존 로직 유지)
+        if len(df.index) >= 5:
+            df.loc["합계", :] = df.iloc[0:5].sum()
         else:
-            df[label] = 0.0
+            df.loc["합계", :] = df.sum()
 
-    # 5) 합계 행 추가 (앞 5개만 합칠지, 전체 합칠지 기존 로직 유지)
-    if len(df.index) >= 5:
-        df.loc["합계", :] = df.iloc[0:5].sum()
-    else:
-        df.loc["합계", :] = df.sum()
+        # ─────────────────────────────
+        # 6) 스타일링 및 출력
+        # ─────────────────────────────
 
-    # ─────────────────────────────
-    # 6) 스타일링 및 출력
-    # ─────────────────────────────
 
-    df_show = df.reset_index()   # index → 첫 컬럼(구분2)
-    df_show.columns.name = None
+        df_show = df.reset_index().rename(columns={"index": "(백만원)"})
+        df_show.columns.name = None
 
-    numeric_cols = df_show.select_dtypes(include="number").columns
-    first_col = df_show.columns[0]
+        numeric_cols = df_show.select_dtypes(include="number").columns
+        first_col = df_show.columns[0]
 
-    styled_df = (
-        df_show.style
-        .format({col: "{:.1f}" for col in numeric_cols}, na_rep="-")
-        .hide(axis="index")
-        # 첫 열(구분2) 스타일
-        .set_properties(
-            subset=[first_col],
-            **{
-                "text-align": "left",
-                "font-weight": "600",
-                "background-color": "#f0f0f0",
-                "white-space": "nowrap",
-            }
+
+        styled_df = (
+            df_show.style
+            .format({col: "{:.1f}" for col in numeric_cols}, na_rep="-")
+            .hide(axis="index")
+
+            .set_properties(
+                subset=[first_col],
+                **{
+                    "text-align": "left",
+                    "font-weight": "600",
+                    "background-color": "#f0f0f0",
+                    "white-space": "nowrap",
+                }
+            )
+            # 헤더 스타일
+            .set_table_styles([
+                {
+                    "selector": "th.col_heading.level0.col0",
+                    "props": [
+                        ("background-color", "#f0f0f0"),
+                        ("font-weight", "700"),
+                        ("text-align", "center"),
+                    ],
+                },
+                {"selector": "th.col_heading", "props": [("text-align", "center")]},
+            ])
+            # 숫자 컬럼 가운데 정렬
+            .set_properties(
+                subset=[c for c in df_show.columns if c in numeric_cols],
+                **{"text-align": "center"}
+            )
         )
-        # 헤더 스타일
-        .set_table_styles([
-            {
-                "selector": "th.col_heading.level0.col0",
-                "props": [
-                    ("background-color", "#f0f0f0"),
-                    ("font-weight", "700"),
-                    ("text-align", "center"),
-                ],
-            },
-            {"selector": "th.col_heading", "props": [("text-align", "center")]},
-        ])
-        # 숫자 컬럼 가운데 정렬
-        .set_properties(
-            subset=[c for c in df_show.columns if c in numeric_cols],
-            **{"text-align": "center"}
-        )
-    )
 
-    table_html = styled_df.to_html(index=False)
-    centered_html = f"<div style='display: flex; justify-content: left;'>{table_html}</div>"
-    st.markdown(centered_html, unsafe_allow_html=True)
+        table_html = styled_df.to_html(index=False)
+        centered_html = f"<div style='display: flex; justify-content: left;'>{table_html}</div>"
+        st.markdown(centered_html, unsafe_allow_html=True)
+    
+    with col_right:
 
 
-# =========================
-#당월 클레임 내역
-# =========================
-with t6:
-    st.markdown(f"### 6) 당월 클레임 내역</h5>", unsafe_allow_html=True)
-    file_name = st.secrets['sheets']['f_48']
-    data = load_data(file_name)
-    data['실적'] /= 1000000
 
-    df_2 = modules.create_df(this_year, current_month, data, mean = "False", prev_year = 1)
+        st.markdown(f"### 2) 당월 클레임 내역</h5>", unsafe_allow_html=True)
+        file_name = st.secrets['sheets']['f_48']
+        data = load_data(file_name)
+        data['실적'] /= 1000000
 
-    for i in data['구분2'].unique():
-        df_2.loc[(i, ' '), :] = df_2.loc[(i, '불량 보상'), :] + df_2.loc[(i, '선별비'), :]
+        df_2 = modules.create_df(this_year, current_month, data, mean = "False", prev_year = 1)
 
-    df_2.loc[:, '증감'] = df_2.iloc[:, -1] - df_2.iloc[:, -2]
+        for i in data['구분2'].unique():
+            df_2.loc[(i, ' '), :] = df_2.loc[(i, '불량 보상'), :] + df_2.loc[(i, '선별비'), :]
 
-    df_2.loc[('합계', '불량 보상'), :] = df_2.iloc[[0, 3, 6, 9, 12]].sum()
-    df_2.loc[('합계', '선별비'), :] = df_2.iloc[[1, 4, 7, 10, 13]].sum()
-    df_2.loc[('합계', ' '), :] = df_2.iloc[[2, 5, 8, 11, 14]].sum()
+        df_2.loc[:, '증감'] = df_2.iloc[:, -1] - df_2.iloc[:, -2]
 
-    level1_order = ['선재', '봉강', '부산', '대구', '글로벌', '합계']
-    level2_order = [' ', '선별비', '불량 보상']
+        df_2.loc[('합계', '불량 보상'), :] = df_2.iloc[[0, 3, 6, 9, 12]].sum()
+        df_2.loc[('합계', '선별비'), :] = df_2.iloc[[1, 4, 7, 10, 13]].sum()
+        df_2.loc[('합계', ' '), :] = df_2.iloc[[2, 5, 8, 11, 14]].sum()
 
-    df_2.index = pd.MultiIndex.from_arrays([
-        pd.Categorical(df_2.index.get_level_values(0), categories=level1_order, ordered=True),
-        pd.Categorical(df_2.index.get_level_values(1), categories=level2_order, ordered=True)])
+        level1_order = ['선재', '봉강', '부산', '대구', '글로벌', '합계']
+        level2_order = [' ', '선별비', '불량 보상']
 
-    df_2 = df_2.sort_index()
+        df_2.index = pd.MultiIndex.from_arrays([
+            pd.Categorical(df_2.index.get_level_values(0), categories=level1_order, ordered=True),
+            pd.Categorical(df_2.index.get_level_values(1), categories=level2_order, ordered=True)])
 
-    styled_df = (
-        df_2.style
-        .format(lambda x: f"{x:,.1f}" if isinstance(x, (int, float)) and pd.notnull(x) else x)
-        .set_properties(**{'text-align': 'right'})
-        .set_properties(**{'font-family': 'Noto Sans KR'})
+        df_2 = df_2.sort_index()
         
+
+        styled_df = (
+            df_2.style
+            .format(lambda x: f"{x:,.1f}" if isinstance(x, (int, float)) and pd.notnull(x) else x)
+            .set_properties(**{'text-align': 'right'})
+            .set_properties(**{'font-family': 'Noto Sans KR'})
+            
+        )
+
+
+
+        table_html_2 = styled_df.to_html(index=True)
+        centered_html_2 = f"<div style='display: flex; justify-content: left;'>{table_html_2}</div>"
+        st.markdown(centered_html_2, unsafe_allow_html=True)
+        
+    # ─ 가로 스크롤 래퍼 닫기 ─
+    st.markdown(
+        """
+        </div>
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
-
-
-    table_html_2 = styled_df.to_html(index=True)
-    centered_html_2 = f"<div style='display: flex; justify-content: left;'>{table_html_2}</div>"
-    st.markdown(centered_html_2, unsafe_allow_html=True)
 
 # =========================
 #영업외 비용 내역
 # =========================
 
-with t7:
-    st.markdown("### 7) 영업외 비용 (최근 3개월)</h4>", unsafe_allow_html=True)
+with t3:
+    st.markdown("### 1) 영업외 비용 (최근 3개월)</h4>", unsafe_allow_html=True)
 
     # 데이터 로드 (secrets)
     csv_src = st.secrets['sheets']['f_49']
