@@ -904,138 +904,126 @@ with t1:
 
 
 with t2:
-    col_left, col_mid, col_right = st.columns([1, 0.05, 1])
-
-    with col_left:
-        st.markdown(f"###  1) 월 평균 클레임 지급액</h4>", unsafe_allow_html=True)
-
-        # 1) 모듈에서 연도별 피벗 데이터 가져오기
-        pivot = modules.update_monthly_claim_form()   # index: 구분2, columns: 연도(int)
-
-        # 2) 선택 연도(this_year) 기준으로 전전전/전전/전/현 4개 연도 결정
-        base_year = int(this_year)
-        target_years = [base_year - 3, base_year - 2, base_year - 1, base_year]
-        col_labels  = [f"{str(y)[2:]}년" for y in target_years]   # "23년", "24년" ...
-
-        # 3) 구분2 인덱스 기준으로 빈 DF 생성
-        idx = sorted(pivot.index.tolist())
-        df = pd.DataFrame(0.0, index=idx, columns=col_labels)
-
-        # 4) 연도별 값 채우기 (없는 연도는 0 유지)
-        for y, label in zip(target_years, col_labels):
-            if y in pivot.columns:
-                df[label] = pivot[y].reindex(df.index).fillna(0).round(0)  # 수치 반올림
-            else:
-                df[label] = 0.0
-
-        # 5) 합계 행 추가 (앞 5개만 합칠지, 전체 합칠지 기존 로직 유지)
-        if len(df.index) >= 5:
-            df.loc["합계", :] = df.iloc[0:5].sum()
-        else:
-            df.loc["합계", :] = df.sum()
-
-        # ─────────────────────────────
-        # 6) 스타일링 및 출력
-        # ─────────────────────────────
-
-
-        df_show = df.reset_index().rename(columns={"index": "(백만원)"})
-        df_show.columns.name = None
-
-        numeric_cols = df_show.select_dtypes(include="number").columns
-        first_col = df_show.columns[0]
-
-
-        styled_df = (
-            df_show.style
-            .format({col: "{:.1f}" for col in numeric_cols}, na_rep="-")
-            .hide(axis="index")
-
-            .set_properties(
-                subset=[first_col],
-                **{
-                    "text-align": "left",
-                    "font-weight": "600",
-                    "background-color": "#f0f0f0",
-                    "white-space": "nowrap",
-                }
-            )
-            # 헤더 스타일
-            .set_table_styles([
-                {
-                    "selector": "th.col_heading.level0.col0",
-                    "props": [
-                        ("background-color", "#f0f0f0"),
-                        ("font-weight", "700"),
-                        ("text-align", "center"),
-                    ],
-                },
-                {"selector": "th.col_heading", "props": [("text-align", "center")]},
-            ])
-            # 숫자 컬럼 가운데 정렬
-            .set_properties(
-                subset=[c for c in df_show.columns if c in numeric_cols],
-                **{"text-align": "center"}
-            )
-        )
-
-        table_html = styled_df.to_html(index=False)
-        centered_html = f"<div style='display: flex; justify-content: left;'>{table_html}</div>"
-        st.markdown(centered_html, unsafe_allow_html=True)
     
-    with col_right:
+    st.markdown(f"###  1) 월 평균 클레임 지급액</h4>", unsafe_allow_html=True)
+
+    # 1) 모듈에서 연도별 피벗 데이터 가져오기
+    pivot = modules.update_monthly_claim_form()   # index: 구분2, columns: 연도(int)
+
+    # 2) 선택 연도(this_year) 기준으로 전전전/전전/전/현 4개 연도 결정
+    base_year = int(this_year)
+    target_years = [base_year - 3, base_year - 2, base_year - 1, base_year]
+    col_labels  = [f"{str(y)[2:]}년" for y in target_years]   # "23년", "24년" ...
+
+    # 3) 구분2 인덱스 기준으로 빈 DF 생성
+    idx = sorted(pivot.index.tolist())
+    df = pd.DataFrame(0.0, index=idx, columns=col_labels)
+
+    # 4) 연도별 값 채우기 (없는 연도는 0 유지)
+    for y, label in zip(target_years, col_labels):
+        if y in pivot.columns:
+            df[label] = pivot[y].reindex(df.index).fillna(0).round(0)  # 수치 반올림
+        else:
+            df[label] = 0.0
+
+    # 5) 합계 행 추가 (앞 5개만 합칠지, 전체 합칠지 기존 로직 유지)
+    if len(df.index) >= 5:
+        df.loc["합계", :] = df.iloc[0:5].sum()
+    else:
+        df.loc["합계", :] = df.sum()
+
+    # ─────────────────────────────
+    # 6) 스타일링 및 출력
+    # ─────────────────────────────
 
 
+    df_show = df.reset_index().rename(columns={"index": "(백만원)"})
+    df_show.columns.name = None
 
-        st.markdown(f"### 2) 당월 클레임 내역</h5>", unsafe_allow_html=True)
-        file_name = st.secrets['sheets']['f_48']
-        data = load_data(file_name)
-        data['실적'] /= 1000000
+    numeric_cols = df_show.select_dtypes(include="number").columns
+    first_col = df_show.columns[0]
 
-        df_2 = modules.create_df(this_year, current_month, data, mean = "False", prev_year = 1)
 
-        for i in data['구분2'].unique():
-            df_2.loc[(i, ' '), :] = df_2.loc[(i, '불량 보상'), :] + df_2.loc[(i, '선별비'), :]
+    styled_df = (
+        df_show.style
+        .format({col: "{:.1f}" for col in numeric_cols}, na_rep="-")
+        .hide(axis="index")
 
-        df_2.loc[:, '증감'] = df_2.iloc[:, -1] - df_2.iloc[:, -2]
-
-        df_2.loc[('합계', '불량 보상'), :] = df_2.iloc[[0, 3, 6, 9, 12]].sum()
-        df_2.loc[('합계', '선별비'), :] = df_2.iloc[[1, 4, 7, 10, 13]].sum()
-        df_2.loc[('합계', ' '), :] = df_2.iloc[[2, 5, 8, 11, 14]].sum()
-
-        level1_order = ['선재', '봉강', '부산', '대구', '글로벌', '합계']
-        level2_order = [' ', '선별비', '불량 보상']
-
-        df_2.index = pd.MultiIndex.from_arrays([
-            pd.Categorical(df_2.index.get_level_values(0), categories=level1_order, ordered=True),
-            pd.Categorical(df_2.index.get_level_values(1), categories=level2_order, ordered=True)])
-
-        df_2 = df_2.sort_index()
-        
-
-        styled_df = (
-            df_2.style
-            .format(lambda x: f"{x:,.1f}" if isinstance(x, (int, float)) and pd.notnull(x) else x)
-            .set_properties(**{'text-align': 'right'})
-            .set_properties(**{'font-family': 'Noto Sans KR'})
-            
+        .set_properties(
+            subset=[first_col],
+            **{
+                "text-align": "left",
+                "font-weight": "600",
+                "background-color": "#f0f0f0",
+                "white-space": "nowrap",
+            }
         )
-
-
-
-        table_html_2 = styled_df.to_html(index=True)
-        centered_html_2 = f"<div style='display: flex; justify-content: left;'>{table_html_2}</div>"
-        st.markdown(centered_html_2, unsafe_allow_html=True)
-        
-    # ─ 가로 스크롤 래퍼 닫기 ─
-    st.markdown(
-        """
-        </div>
-        </div>
-        """,
-        unsafe_allow_html=True
+        # 헤더 스타일
+        .set_table_styles([
+            {
+                "selector": "th.col_heading.level0.col0",
+                "props": [
+                    ("background-color", "#f0f0f0"),
+                    ("font-weight", "700"),
+                    ("text-align", "center"),
+                ],
+            },
+            {"selector": "th.col_heading", "props": [("text-align", "center")]},
+        ])
+        # 숫자 컬럼 가운데 정렬
+        .set_properties(
+            subset=[c for c in df_show.columns if c in numeric_cols],
+            **{"text-align": "center"}
+        )
     )
 
+    table_html = styled_df.to_html(index=False)
+    centered_html = f"<div style='display: flex; justify-content: left;'>{table_html}</div>"
+    st.markdown(centered_html, unsafe_allow_html=True)
+
+
+    st.divider()
+
+    st.markdown(f"### 2) 당월 클레임 내역</h5>", unsafe_allow_html=True)
+    file_name = st.secrets['sheets']['f_48']
+    data = load_data(file_name)
+    data['실적'] /= 1000000
+
+    df_2 = modules.create_df(this_year, current_month, data, mean = "False", prev_year = 1)
+
+    for i in data['구분2'].unique():
+        df_2.loc[(i, ' '), :] = df_2.loc[(i, '불량 보상'), :] + df_2.loc[(i, '선별비'), :]
+
+    df_2.loc[:, '증감'] = df_2.iloc[:, -1] - df_2.iloc[:, -2]
+
+    df_2.loc[('합계', '불량 보상'), :] = df_2.iloc[[0, 3, 6, 9, 12]].sum()
+    df_2.loc[('합계', '선별비'), :] = df_2.iloc[[1, 4, 7, 10, 13]].sum()
+    df_2.loc[('합계', ' '), :] = df_2.iloc[[2, 5, 8, 11, 14]].sum()
+
+    level1_order = ['선재', '봉강', '부산', '대구', '글로벌', '합계']
+    level2_order = [' ', '선별비', '불량 보상']
+
+    df_2.index = pd.MultiIndex.from_arrays([
+        pd.Categorical(df_2.index.get_level_values(0), categories=level1_order, ordered=True),
+        pd.Categorical(df_2.index.get_level_values(1), categories=level2_order, ordered=True)])
+
+    df_2 = df_2.sort_index()
+    
+
+    styled_df = (
+        df_2.style
+        .format(lambda x: f"{x:,.1f}" if isinstance(x, (int, float)) and pd.notnull(x) else x)
+        .set_properties(**{'text-align': 'right'})
+        .set_properties(**{'font-family': 'Noto Sans KR'})
+        
+    )
+
+
+
+    table_html_2 = styled_df.to_html(index=True)
+    centered_html_2 = f"<div style='display: flex; justify-content: left;'>{table_html_2}</div>"
+    st.markdown(centered_html_2, unsafe_allow_html=True)
+    display_memo('f_48', this_year, current_month)
 
 # =========================
 #영업외 비용 내역
@@ -1048,40 +1036,56 @@ with t3:
     csv_src = st.secrets['sheets']['f_49']
     df_raw = modules.load_nonop_cost_csv(csv_src)
 
-    # 표 생성: 구분2 섹션(기타비용/금융비용) × 구분4 세부항목
+    # 표 생성
     df_tbl = modules.create_nonop_cost_3month_by_g2_g4(
         year=this_year,
         month=current_month,
         data=df_raw
     )
 
-    # 스타일
+    # ---- 100만 단위 반올림 표시 함수 적용 ----
     num_cols = [c for c in df_tbl.columns if c not in ("구분","계정","_row_type")]
 
     def _fmt(x):
-        if isinstance(x, (int, float)):
-            return f"{x:,.0f}"
-        return x
+        try:
+            v = float(x)
+        except:
+            return x
 
+        # 실제 값이 0이면 빈칸
+        if v == 0:
+            return ""
+
+        # 100만 단위 반올림
+        rounded = round(v / 1_000_000)
+
+        # 반올림 결과도 0이면 빈칸
+        if rounded == 0:
+            return ""
+
+        return f"{rounded:,.0f}"
+
+
+
+    # ---- 스타일 구성 ----
     sty = (
         df_tbl.drop(columns=[c for c in ["_row_type"] if c in df_tbl.columns])
              .style
-             .format(_fmt, subset=pd.IndexSlice[:, num_cols])
+             .format(_fmt, subset=pd.IndexSlice[:, num_cols])     # ← 반올림 적용됨
              .set_properties(**{"text-align":"right", "font-family":"Noto Sans KR"})
              .set_properties(subset=pd.IndexSlice[:, ["구분","계정"]], **{"text-align":"left"})
     )
 
+    # 특정 계정 오른쪽 정렬
     right_idx = df_tbl.index[
-    df_tbl["계정"].astype(str).str.strip().isin(["고철매각작업비","기타"])
+        df_tbl["계정"].astype(str).str.strip().isin(["고철매각작업비","기타"])
     ]
     sty = sty.set_properties(
         subset=(right_idx, ["계정"]),
         **{"text-align":"right", "padding-right":"12px"}
     )
 
-    
-
-    # 행 하이라이트: 섹션 합계/총계 굵게+회색, 세부항목은 기본
+    # ---- 행 하이라이트 ----
     def _row_style(row):
         t = df_tbl.loc[row.name, "_row_type"]
         if t == "section_total":
@@ -1089,82 +1093,69 @@ with t3:
         if t == "grand_total":
             return ["font-weight:700; background-color:#ededed"] * len(row)
         return [""] * len(row)
-    
+
     sty = sty.apply(_row_style, axis=1)
 
+    # ---- CSS 커스텀 스타일 ----
     styles_prod = []
 
-    # 잡손실 기타 고철매각작업비 행 작업
     styles_prod.append({
-            'selector': 'tbody tr:nth-child(6) td:nth-child(2)',
-            'props': [('border-bottom', '2px solid white !important')]
-            
+        'selector': 'tbody tr:nth-child(6) td:nth-child(2)',
+        'props': [('border-bottom', '2px solid white !important')]
+    })
+    styles_prod.append({
+        'selector': 'tbody tr:nth-child(7) td:nth-child(2)',
+        'props': [('border-bottom', '2px solid white !important')]
     })
 
+    # 기타비용 위 빈행들
+    for i in range(1, 10+1):
+        styles_prod.append({
+            "selector": f"tbody tr:nth-child({i}) td:nth-of-type(1)",
+            "props": [("border-bottom", "2px solid white !important")]
+        })
+
+    # 금융비용 위 빈행들
+    for i in range(12, 18+1):
+        styles_prod.append({
+            "selector": f"tbody tr:nth-child({i}) td:nth-of-type(1)",
+            "props": [("border-bottom", "2px solid white !important")]
+        })
+
     styles_prod.append({
-            'selector': 'tbody tr:nth-child(7) td:nth-child(2)',
-            'props': [('border-bottom', '2px solid white !important')]
-            
+        'selector': 'tbody tr:nth-child(11)',
+        'props': [('border-bottom', '3px solid gray !important')]
     })
 
-    #기타비용 위 빈 행들 작업
-    for i in range(1, 11):
+    for i in range(1, 11+1):
         styles_prod.append({
-        "selector": f"tbody tr:nth-child({i}) td:nth-of-type(1)",
-        "props": [("border-bottom", "2px solid white !important")]
-    })
-        
-    #금융비용 위 빈 행들 작업
-    for i in range(12, 19):
-        styles_prod.append({
-        "selector": f"tbody tr:nth-child({i}) td:nth-of-type(1)",
-        "props": [("border-bottom", "2px solid white !important")]
-    })
-        
-    
-    styles_prod.append({
-            'selector': 'tbody tr:nth-child(11)',
-            'props': [('border-bottom', '3px solid gray !important')]
-            
-    })
+            "selector": f"tbody tr:nth-child({i})",
+            "props": [("border-right", "3px solid gray !important")]
+        })
 
-    for i in range(1, 12):
+    for i in range(12, 20+1):
         styles_prod.append({
-        "selector": f"tbody tr:nth-child({i})",
-        "props": [("border-right", "3px solid gray !important")]
-    })
-        
-    for i in range(12, 21):
-        styles_prod.append({
-        "selector": f"tbody tr:nth-child({i})",
-        "props": [("border-right", "3px solid gray !important")]
-    })
-        
+            "selector": f"tbody tr:nth-child({i})",
+            "props": [("border-right", "3px solid gray !important")]
+        })
+
     styles_prod.append({
-            'selector': 'tbody tr:nth-child(20)',
-            'props': [('border-bottom', '3px solid gray !important')]
-            
+        'selector': 'tbody tr:nth-child(20)',
+        'props': [('border-bottom', '3px solid gray !important')]
     })
-    
 
     sty = sty.set_table_styles(styles_prod, overwrite=False)
 
-     
-    # 음수는 빨간색
-    def _neg_red(v):
-        try:
-            return "color:#0000FF" if float(v) < 0 else ""
-        except Exception:
-            return ""
-    for c in num_cols:
-        sty = sty.applymap(_neg_red, subset=pd.IndexSlice[:, [c]])
 
+    # ---- 인덱스 숨기기 ----
+    if hasattr(sty, "hide"):
+        sty = sty.hide(axis="index")
 
-    if hasattr(sty, "hide"):          
-        sty = sty.hide(axis="index")  # 인덱스와 인덱스 헤더 셀 모두 제거
-
+    # 최종 출력
     table_html = sty.to_html(index=False)
     st.markdown(f"<div style='display:flex; justify-content:left;'>{table_html}</div>", unsafe_allow_html=True)
+
+    display_memo('f_49', this_year, current_month)
 
 
 
