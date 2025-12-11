@@ -6694,7 +6694,7 @@ def build_table_60(df_src: pd.DataFrame, year: int, month: int):
             continue
 
         if plant == "서울":
-            # 서울: 사무직만, 한 행으로 표시
+            # 서울: 사무직만
             sub = plant_df[
                 (plant_df["구분2"] == "자사")
                 & (plant_df["구분3"] == "사무기술직")
@@ -6752,6 +6752,9 @@ def build_table_60(df_src: pd.DataFrame, year: int, month: int):
         "plan_diff",
     ]
     disp = disp[col_order]
+    
+    #구분1 중복제거
+    disp["구분1"] = disp["구분1"].mask(disp["구분1"].duplicated(), "")
 
     meta = {
         "prev_year": prev_year,
@@ -6761,8 +6764,8 @@ def build_table_60(df_src: pd.DataFrame, year: int, month: int):
         "m": m,
         "cols": col_order,
         "hdr1": [
-            "",                               # 구분1
-            "",                               # 구분2
+            "구분",
+            "",
             f"'{str(prev_year)[-2:]}년 연평균",
             f"{year}년 계획",
             f"{year}년 실적",
@@ -6773,8 +6776,8 @@ def build_table_60(df_src: pd.DataFrame, year: int, month: int):
             "계획대비",
         ],
         "hdr2": [
-            "구분1",
-            "구분2",
+            "",
+            "",
             "",                               # prev_avg
             f"{m}월",                         # plan_m
             f"{m2}월" if m2 >= 1 else "",
@@ -6843,10 +6846,7 @@ def build_grade_sales_table_68(df_src: pd.DataFrame, year: int, month: int):
     # 전월/당월 (연,월) 쌍: month_pairs[1]=전월, month_pairs[2]=선택월
     (prev_y, prev_m), (cur_y, cur_m) = month_pairs[1], month_pairs[2]
 
-    # ----------------------
-    # 구분1(공장)별 블록 생성
-    # + 남통+천진을 합친 가상 구분1='중국' 블록
-    # ----------------------
+    # 공장별 생성-> 중국 = 남통+천진
     for plant in plants_for_loop:
 
         # plant별로 사용할 pdf 결정
@@ -7053,9 +7053,6 @@ def build_chq_f69(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
     
     df = df_src[df_src["구분1"] == "CHQ 열처리 제품 판매현황"].copy()
 
-    # ======================
-    # 1. 기본 전처리
-    # ======================
     df["연도"] = pd.to_numeric(df["연도"], errors="coerce")
     df["월"]   = pd.to_numeric(df["월"],   errors="coerce")
 
@@ -7065,10 +7062,6 @@ def build_chq_f69(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
     # 공장(남통, 천진, 태국 등)은 구분2 기준
     base_plants = list(df["구분2"].dropna().unique())
 
-    # ======================
-    # 2. 구분1(공장) 순서 구성
-    #    남통, 천진, 중국(=남통+천진), 태국
-    # ======================
     plants_for_loop: list[str] = []
 
     for p in ["남통", "천진"]:
@@ -7084,13 +7077,11 @@ def build_chq_f69(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
 
     rows = []
 
-    # ======================
-    # 3. 기준 연/월 정보
-    # ======================
-    # (1) 직전 3개 연도: year-3, year-2, year-1
+
+    # 직전 3개 연도: year-3, year-2, year-1
     prev_years = [year - 3, year - 2, year - 1]
 
-    # 헤더용 라벨: 예) '22년, '23년, '24년 누계
+    # 헤더용 라벨
     prev_year_labels = []
     for y in prev_years:
         if y == year - 1:
@@ -7098,8 +7089,8 @@ def build_chq_f69(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
         else:
             prev_year_labels.append(f"'{str(y)[-2:]}년")
 
-    # (2) 최근 3개월 (전전월, 전월, 선택월) - 연도 경계 처리
-    #     예: 2026-02 선택 → (2025,12), (2026,1), (2026,2)
+    # 최근 3개월 / 연도 넘어감 정리
+
     month_pairs: list[tuple[int, int]] = []
     for k in (2, 1, 0):  # 전전월, 전월, 선택월
         y0 = year
@@ -7252,16 +7243,13 @@ def build_chq_f69(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
 
 
 ##### 해외법인실적 비가공품 판매현황 #####
-import pandas as pd
+
 def build_f70(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
     # 0) 비가공품 판매현황만 사용 (공백/오타 대비)
     df = df_src.copy()
     df["구분1"] = df["구분1"].astype(str).str.strip()
     df = df[df["구분1"].str.contains("비가공품 판매현황", na=False)].copy()
 
-    # ======================
-    # 1. 기본 전처리
-    # ======================
     df["연도"] = pd.to_numeric(df["연도"], errors="coerce")
     df["월"]   = pd.to_numeric(df["월"],   errors="coerce")
 
@@ -7275,10 +7263,6 @@ def build_f70(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
     # 공장(남통, 천진, 태국 등)은 구분2 기준
     base_plants = list(df["구분2"].dropna().unique())
 
-    # ======================
-    # 2. 구분1(공장) 순서 구성
-    #    남통, 천진, 중국(=남통+천진), 태국
-    # ======================
     plants_for_loop: list[str] = []
 
     for p in ["남통", "천진"]:
@@ -7297,10 +7281,10 @@ def build_f70(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
     # ======================
     # 3. 기준 연/월 정보
     # ======================
-    # (1) 직전 3개 연도: year-3, year-2, year-1
+    # 직전 3개 연도
     prev_years = [year - 3, year - 2, year - 1]
 
-    # 헤더용 라벨: 예) '22년, '23년, '24년 누계
+    # 헤더용 라벨
     prev_year_labels = []
     for y in prev_years:
         if y == year - 1:
@@ -7308,8 +7292,7 @@ def build_f70(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
         else:
             prev_year_labels.append(f"'{str(y)[-2:]}년")
 
-    # (2) 최근 3개월 (전전월, 전월, 선택월) - 연도 경계 처리
-    #     예: 2026-02 선택 → (2025,12), (2026,1), (2026,2)
+    # 최근 3개월 
     month_pairs: list[tuple[int, int]] = []
     for k in (2, 1, 0):  # 전전월, 전월, 선택월
         y0 = year
@@ -7714,17 +7697,7 @@ def create_bs_from_company(
     item_order: list[str],
     company_name: str,
 ) -> pd.DataFrame:
-    """
-    구분1 : 회사
-    구분2 : 재무 항목(현금및현금성자산, 매출채권, ...)
-    → 특정 회사(company_name)에 대해
 
-    [선택 전전전년 말, 전전년말, 전년말, 선택연도 전월, 선택연도 선택월, 전월비] 구조의
-    재무상태표를 생성한다.
-
-    - 연산용 항목: 구분2
-    - _normalize_bs_simple 결과: ['구분3','연도','월','실적','회사', ...] 가정
-    """
 
     # 1) 기본 컬럼 체크
     required_cols = ['구분1', '구분2']
@@ -7732,31 +7705,30 @@ def create_bs_from_company(
         if col not in data.columns:
             raise ValueError(f"'{col}' 컬럼이 없습니다. 원본 스키마를 확인하세요.")
 
-    # 2) 회사 기준 필터링 (구분1 == company_name)
+    # 2) 회사 필터링
     df_src = data.copy()
     df_src['구분1'] = df_src['구분1'].astype(str).str.strip()
     df_src = df_src[df_src['구분1'] == str(company_name).strip()].copy()
 
-    if df_src.empty:
-        raise ValueError(f"'구분1'에서 회사명 '{company_name}' 데이터가 없습니다.")
 
-    # 3) _normalize_bs_simple 와 호환되도록 컬럼 맞춰주기
+
+
     #    - 연산용 항목 컬럼: 구분2 → 구분3
     #    - 회사 컬럼: 구분1 → 회사
     df_src['구분3'] = df_src['구분2']
     df_src['회사']   = df_src['구분1']
 
-    # 이 함수는 기존에 쓰던 것 그대로 재사용
+
     df = _normalize_bs_simple(df_src)
 
     req_y = int(year)
     req_m = int(month)
 
     # 연도 포맷(두 자리)
-    yy_m3  = f"{(req_y - 3) % 100:02d}"   # 선택연도 -3년
-    yy_m2  = f"{(req_y - 2) % 100:02d}"   # 선택연도 -2년
-    yy_m1  = f"{(req_y - 1) % 100:02d}"   # 선택연도 -1년
-    yy_curr = f"{req_y % 100:02d}"        # 선택연도
+    yy_m3  = f"{(req_y - 3) % 100:02d}"   
+    yy_m2  = f"{(req_y - 2) % 100:02d}"   
+    yy_m1  = f"{(req_y - 1) % 100:02d}"   
+    yy_curr = f"{req_y % 100:02d}"        
 
     # 선택월 / 전월 계산
     used_m = req_m
@@ -7808,8 +7780,7 @@ def create_bs_from_company(
 
     out = pd.DataFrame(rows, index=index_labels).fillna(0.0)
 
-    # 8) 뷰용 컬럼명으로 리네임
-    #    (라벨은 필요에 따라 바꿔도 되는데, 일단 직관적으로 이렇게 둠)
+    # 선택  연월 기준
     out = out.rename(columns={
         col_yend_m3: f"'{yy_m3}년말",   # 선택 전전전년 말
         col_yend_m2: f"'{yy_m2}년말",   # 선택 전전년 말
@@ -10741,4 +10712,3 @@ def build_f101(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
         df_out[c] = df_out[c].round(0).astype(int, errors="ignore")
 
     return df_out
-
