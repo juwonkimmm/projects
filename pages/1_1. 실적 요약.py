@@ -300,7 +300,7 @@ with t1:
                 hdr2[c_idx[c]] = c
 
         hdr_df   = pd.DataFrame([hdr1, hdr2], columns=cols)
-        disp_vis = pd.concat([hdr_df, disp], ignore_index=True)  # ← f_2 코드와 같은 방식
+        disp_vis = pd.concat([hdr_df, disp], ignore_index=True)  
 
         # ===== 스타일 / 하이라이트 =====
         highlight_cols = ['전월 실적', '당월 계획', '당월 실적', '전월 실적 대비', '계획 대비']
@@ -3593,6 +3593,52 @@ with t3:
 
 
 
+
+
+
+
+
+
+
+
+
+
+# ---------------------------------------------------------------
+
+
+# =========================
+
+
+
+
+# =========================
+# 주요경영지표(본사)
+# =========================
+# with t2:
+#     pass
+
+# =========================
+
+# Footer
+# =========================
+
+
+
+
+# =========================
+# 주요경영지표(본사)
+# =========================
+# with t2:
+#     pass
+
+# =========================
+# 연간사업계획
+# =========================
+# with t3:
+#     pass
+# =========================
+# Footer
+# =========================
 st.markdown("""
 <style>.footer { bottom: 0; left: 0; right: 0; padding: 8px; text-align: center; font-size: 13px; color: #666666;}</style>
 <div class="footer">ⓒ 2025 SeAH Special Steel Corp. All rights reserved.</div>

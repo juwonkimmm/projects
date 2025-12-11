@@ -304,6 +304,14 @@ with t1:
         styles = [
             {"selector": "thead", "props": [("display", "none")]},
 
+            {
+                "selector": "tbody tr td:nth-child(1)",
+                "props": [
+                    ("border-right", "2px solid white !important"),
+                ],
+            },
+
+
             # 1행/2행 헤더
             {
                 "selector": "tbody tr:nth-child(1) td",

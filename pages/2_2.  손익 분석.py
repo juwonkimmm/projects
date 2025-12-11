@@ -947,6 +947,13 @@ with t3:
         # ===== 테이블 스타일 =====
         styles = [
             {'selector': 'thead', 'props': [('display','none')]},
+            
+            {
+                "selector": "tbody tr td:nth-child(1)",
+                "props": [
+                    ("border-right", "2px solid white !important"),
+                ],
+            },
 
             # 가짜 헤더 2행
             {'selector': 'tbody tr:nth-child(1) td', 'props': [('text-align','center'),('font-weight','700'),('padding','6px 8px')]},
@@ -1317,6 +1324,13 @@ with t3:
 
         styles = [
             {'selector': 'thead', 'props': [('display','none')]},
+            
+            {
+                "selector": "tbody tr td:nth-child(1)",
+                "props": [
+                    ("border-right", "2px solid white !important"),
+                ],
+            },
 
             {'selector': 'tbody tr:nth-child(1) td', 'props': [
                 ('text-align','center'),('font-weight','700'),('padding','6px 8px')
@@ -1430,6 +1444,13 @@ with t4:
 
         styles = [
             {'selector': 'thead', 'props': [('display','none')]},
+            
+            {
+                "selector": "tbody tr td:nth-child(1)",
+                "props": [
+                    ("border-right", "2px solid white !important"),
+                ],
+            },
             {'selector': 'tbody tr:nth-child(1) td', 'props': [('text-align','center'),('font-weight','700')]},
             {'selector': 'tbody tr:nth-child(2) td', 'props': [('text-align','center'),('font-weight','700'),('border-bottom','3px solid gray !important')]},
             {'selector': 'tbody tr:nth-child(n+3) td', 'props': [('text-align','right')]},
@@ -1563,6 +1584,13 @@ with t5:
         # ====== 스타일 ======
         styles = [
             {'selector': 'thead', 'props': [('display','none')]},
+            
+            {
+                "selector": "tbody tr td:nth-child(1)",
+                "props": [
+                    ("border-right", "2px solid white !important"),
+                ],
+            },
             # 가짜 헤더 1행
             {'selector': 'tbody tr:nth-child(1) td', 'props': [
                 ('text-align','center'),
@@ -1654,6 +1682,12 @@ with t6:
         # === 스타일 ===
         styles = [
             {'selector': 'thead', 'props': [('display','none')]},
+            {
+                "selector": "tbody tr td:nth-child(1)",
+                "props": [
+                    ("border-right", "2px solid white !important"),
+                ],
+            },
             {'selector': 'tbody tr:nth-child(1) td', 'props': [('text-align','center'),('font-weight','700')]},
             {'selector': 'tbody tr:nth-child(2) td', 'props': [('text-align','center'),('font-weight','700'),('border-bottom','3px solid #000 !important')]},
             {'selector': 'tbody tr:nth-child(n+3) td:nth-child(2)', 'props': [('text-align','left'),('white-space','nowrap')]},
