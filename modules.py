@@ -10712,3 +10712,4 @@ def build_f101(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
         df_out[c] = df_out[c].round(0).astype(int, errors="ignore")
 
     return df_out
+

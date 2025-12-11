@@ -350,13 +350,6 @@ with t1:
     st.divider()
 
 
-
-
-
-
-
-
-
 # Footer
 st.markdown("""
 <style>.footer { bottom: 0; left: 0; right: 0; padding: 8px; text-align: center; font-size: 13px; color: #666666;}</style>
