@@ -1610,22 +1610,20 @@ with t2:
             s = f"{abs(r):,}"
             return f"({s})" if r < 0 else s
 
-        # 판매량: (1) 1000으로 나눠서 천단위로 만들고
-        #         (2) 그 값에서 반올림 (ROUND_HALF_UP)
-        #  예: 30,335,213 → 30335.213 → 반올림 → 30335
+        #단위
+
         def fmt_qty(x):
             v = _to_float(x)
             if math.isnan(v):
                 return x
 
-            v_thousand = v / 1000.0  # ← 마지막 세 자리(백·십·일) 기준으로 반올림
+            v_thousand = v / 1000.0  
             r = int(Decimal(str(v_thousand)).quantize(Decimal("0"), rounding=ROUND_HALF_UP))
 
-            # 콤마 붙이고 싶으면 아래처럼, 안 붙이고 싶으면 f"{abs(r)}" 로 변경
             s = f"{abs(r):,}"
             return f"({s})" if r < 0 else s
 
-        # 퍼센트: 소수 1자리 + 음수 괄호
+
         def fmt_pct(x):
             v = _to_float(x)
             if math.isnan(v):
@@ -1745,17 +1743,6 @@ with t2:
                 ]
         
         styles  += spacer_rules6     
-
-        # spacer_rules7 = [
-        #             {
-        #                 'selector': f'tbody tr:nth-child(2) td:nth-child(3)',
-        #                 'props': [('border-top','3px solid gray ')],
-        #             }
-
-        #         ]
-        
-        # styles  += spacer_rules7   
-
 
 
         spacer_rules7 = [
@@ -1881,7 +1868,6 @@ with t2:
                 return f"({s})" if v < 0 else s
             except: return x
 
-        # 본문(= 3행부터)만 포맷 적용
         body = disp_vis.iloc[2:].copy()
         mask_amt = body["구분"].isin(amt_rows)
         mask_qty = body["구분"].isin(qty_rows)
@@ -3145,136 +3131,155 @@ with t2:
 
     st.divider()
 
-    st.markdown("<h4>10) 회전일 (별도)</h4>", unsafe_allow_html=True)
+    col_left, col_mid, col_right = st.columns([1, 0.05, 1])
 
+    with col_left:
 
-    try:
-        file_name = st.secrets["sheets"]["f_4"]
-        raw = pd.read_csv(file_name, dtype=str)
-
-        # 최신 modules 반영
-        import importlib
-        importlib.invalidate_caches(); importlib.reload(modules)
-
-        # 본사 전용 표 생성 
-        snap = modules.create_turnover_special_steel(
-            year=int(st.session_state['year']),
-            month=int(st.session_state['month']),
-            data=raw
-        )
-
-        # ─ 표시용 포맷: 소수1자리, NaN은 공란 ─
-        def fmt1(x):
-            try:
-                v = float(x)
-                return f"{v:.2f}" if pd.notnull(v) else ""
-            except Exception:
-                return x
-
-        # 인덱스 이름 부여 후 1열로 올리기
-        disp = snap.copy()
-        disp.index.name = '구분'
-        disp = disp.reset_index()
-        disp = disp.applymap(fmt1)
-
-        cols = disp.columns.tolist()
-
-        if '전월대비' in cols:
-            nth_delta = cols.index('전월대비') + 1
-        else:
-            nth_delta = len(cols)  # 안전장치
+        st.markdown("<h4>10) 회전일 (별도)</h4>", unsafe_allow_html=True)
 
 
         try:
-            ccc_row_idx = disp.index[disp['구분'] == '현금전환주기'][0] + 1
-        except Exception:
-            ccc_row_idx = None
+            file_name = st.secrets["sheets"]["f_4"]
+            raw = pd.read_csv(file_name, dtype=str)
 
-        styles = [
+            # 최신 modules 반영
+            import importlib
+            importlib.invalidate_caches(); importlib.reload(modules)
 
-            {'selector': 'thead th', 'props': [('text-align','center'),
-                                            ('padding','10px 8px'),
-                                            ('font-weight','700')]},
+            # 본사 전용 표 생성 
+            snap = modules.create_turnover_special_steel(
+                year=int(st.session_state['year']),
+                month=int(st.session_state['month']),
+                data=raw
+            )
 
-            {'selector': 'tbody td', 'props': [('text-align','right'), ('padding','8px 10px')]},
+            # ─ 표시용 포맷: 소수1자리, NaN은 공란 ─
+            def fmt1(x):
+                try:
+                    v = float(x)
+                    return f"{v:.2f}" if pd.notnull(v) else ""
+                except Exception:
+                    return x
 
-            {'selector': 'tbody td:first-child', 'props': [('text-align','center')]},
+            # 인덱스 이름 부여 후 1열로 올리기
+            disp = snap.copy()
+            disp.index.name = '구분'
+            disp = disp.reset_index()
+            disp = disp.applymap(fmt1)
 
-        ]
+            cols = disp.columns.tolist()
 
-
-        display_styled_df(disp, styles=styles, already_flat=True)
-
-        display_memo('f_15', year, month)
-
-    except Exception as e:
-        st.error(f"회전일 표 생성 중 오류: {e}")
-
-
-
-    st.divider()
-
-    st.markdown("<h4>11) 수익성 (별도)</h4>", unsafe_allow_html=True)
-
-
-    try:
-        file_name = st.secrets["sheets"]["f_16"]
-        raw = pd.read_csv(file_name, dtype=str)
-
-        # 본사 전용 표 생성 
-        snap = modules.create_profitability_special_steel(
-            year=int(st.session_state['year']),
-            month=int(st.session_state['month']),
-            data=raw
-        )
+            if '전월대비' in cols:
+                nth_delta = cols.index('전월대비') + 1
+            else:
+                nth_delta = len(cols)  # 안전장치
 
 
-        # ─ 표시용 포맷: 소수1자리, NaN은 공란 ─
-        def fmt1(x):
             try:
-                v = float(x)
-                return f"{v:.2f}" if pd.notnull(v) else ""
+                ccc_row_idx = disp.index[disp['구분'] == '현금전환주기'][0] + 1
             except Exception:
-                return x
+                ccc_row_idx = None
 
-        # 인덱스 이름 부여 후 1열로 올리기
-        disp = snap.copy()
-        disp.index.name = '구분'
-        disp = disp.reset_index()
-        disp = disp.applymap(fmt1)
+            styles = [
 
-        cols = disp.columns.tolist()
+                {'selector': 'thead th', 'props': [('text-align','center'),
+                                                ('padding','10px 8px'),
+                                                ('font-weight','700')]},
 
-        if '전월대비' in cols:
-            nth_delta = cols.index('전월대비') + 1
-        else:
-            nth_delta = len(cols)  # 안전장치
+                {'selector': 'tbody td', 'props': [('text-align','right'), ('padding','8px 10px')]},
 
+                {'selector': 'tbody td:first-child', 'props': [('text-align','center')]},
 
-        # try:
-        #     ccc_row_idx = disp.index[disp['구분'] == '현금전환주기'][0] + 1
-        # except Exception:
-        #     ccc_row_idx = None
-
-        styles = [
-
-            {'selector': 'thead th', 'props': [('text-align','center'),
-                                            ('padding','10px 8px'),
-                                            ('font-weight','700')]},
-
-            {'selector': 'tbody td', 'props': [('text-align','right'), ('padding','8px 10px')]},
-
-            {'selector': 'tbody td:first-child', 'props': [('text-align','center')]},
-
-        ]
+            ]
 
 
-        display_styled_df(disp, styles=styles, already_flat=True)
+            display_styled_df(disp, styles=styles, already_flat=True)
 
-        display_memo('f_16', year, month)
+            display_memo('f_15', year, month)
 
-    except Exception as e:
-        st.error(f"회전일 표 생성 중 오류: {e}")
+        except Exception as e:
+            st.error(f"회전일 표 생성 중 오류: {e}")
+
+
+
+
+
+    with col_mid:
+        st.markdown("<div class='v-divider'></div>", unsafe_allow_html=True)
+
+
+    with col_right:
+
+        st.markdown("<h4>11) 수익성 (별도)</h4>", unsafe_allow_html=True)
+
+
+        try:
+            file_name = st.secrets["sheets"]["f_16"]
+            raw = pd.read_csv(file_name, dtype=str)
+
+            # 본사 전용 표 생성 
+            snap = modules.create_profitability_special_steel(
+                year=int(st.session_state['year']),
+                month=int(st.session_state['month']),
+                data=raw
+            )
+
+
+            # ─ 표시용 포맷: 소수1자리, NaN은 공란 ─
+            def fmt1(x):
+                try:
+                    v = float(x)
+                    return f"{v:.2f}" if pd.notnull(v) else ""
+                except Exception:
+                    return x
+
+            # 인덱스 이름 부여 후 1열로 올리기
+            disp = snap.copy()
+            disp.index.name = '구분'
+            disp = disp.reset_index()
+            disp = disp.applymap(fmt1)
+
+            cols = disp.columns.tolist()
+
+            if '전월대비' in cols:
+                nth_delta = cols.index('전월대비') + 1
+            else:
+                nth_delta = len(cols)  # 안전장치
+
+
+            # try:
+            #     ccc_row_idx = disp.index[disp['구분'] == '현금전환주기'][0] + 1
+            # except Exception:
+            #     ccc_row_idx = None
+
+            styles = [
+
+                {'selector': 'thead th', 'props': [('text-align','center'),
+                                                ('padding','10px 8px'),
+                                                ('font-weight','700')]},
+
+                {'selector': 'tbody td', 'props': [('text-align','right'), ('padding','8px 10px')]},
+
+                {'selector': 'tbody td:first-child', 'props': [('text-align','center')]},
+
+            ]
+
+
+            display_styled_df(disp, styles=styles, already_flat=True)
+
+            display_memo('f_16', year, month)
+
+        except Exception as e:
+            st.error(f"수익 표 생성 중 오류: {e}")
+            
+    # ─ 가로 스크롤 래퍼 닫기 ─
+    st.markdown(
+        """
+        </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 # 연간사업계획
@@ -3596,49 +3601,6 @@ with t3:
 
 
 
-
-
-
-
-
-
-
-# ---------------------------------------------------------------
-
-
-# =========================
-
-
-
-
-# =========================
-# 주요경영지표(본사)
-# =========================
-# with t2:
-#     pass
-
-# =========================
-
-# Footer
-# =========================
-
-
-
-
-# =========================
-# 주요경영지표(본사)
-# =========================
-# with t2:
-#     pass
-
-# =========================
-# 연간사업계획
-# =========================
-# with t3:
-#     pass
-# =========================
-# Footer
-# =========================
 st.markdown("""
 <style>.footer { bottom: 0; left: 0; right: 0; padding: 8px; text-align: center; font-size: 13px; color: #666666;}</style>
 <div class="footer">ⓒ 2025 SeAH Special Steel Corp. All rights reserved.</div>
