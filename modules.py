@@ -2266,6 +2266,7 @@ def create_cashflow_by_gubun(year: int, month: int, data: pd.DataFrame) -> pd.Da
     used_year = year
     used_month = month
 
+    # "전월"용 prev_year/prev_month (메타 정보)
     prev_year = used_year
     prev_month = used_month - 1
     if prev_month == 0:
@@ -2299,16 +2300,18 @@ def create_cashflow_by_gubun(year: int, month: int, data: pd.DataFrame) -> pd.Da
         return pv.reindex(columns=companies).fillna(0.0)
     # ---------- /집계 함수 ----------
 
-    # ✅ 전년도 누계
-    col_prev_year = total_by_items(prev_year, range(1, 13))
+    # ✅ 전년도 누계 (항상 year-1 기준)
+    prev_full_year = used_year - 1
+    col_prev_year = total_by_items(prev_full_year, range(1, 13))
 
-    # ✅ 전월 누적
+    # ✅ 전월 누적 (선택연도 기준)
     if used_month > 1:
         col_prev_cum = total_by_items(used_year, range(1, used_month))
     else:
+        # 선택연도 1월이면 전월누적 = 전년도 누계
         col_prev_cum = col_prev_year
 
-    # ✅ 당월 / 당월누적
+    # ✅ 당월 / 당월누적 (선택연도 기준)
     col_month = total_by_items(used_year, [used_month])
     col_ytd   = total_by_items(used_year, range(1, used_month + 1))
 
@@ -2316,24 +2319,30 @@ def create_cashflow_by_gubun(year: int, month: int, data: pd.DataFrame) -> pd.Da
 
     all_items = pd.Index(gubun_order, name="구분")
 
+    # ✅ 연도 라벨 동적으로 생성
+    prev_year_label = f"'{prev_full_year % 100:02d}"
+    used_year_label = f"'{used_year % 100:02d}"
+
     out = pd.DataFrame(index=all_items, dtype=float)
-    out["'24"] = col_prev_year.reindex(all_items).fillna(0.0).values
-    out["'25"] = col_prev_cum.reindex(all_items).fillna(0.0).values
+    out[prev_year_label] = col_prev_year.reindex(all_items).fillna(0.0).values      # 전년도 누계
+    out[used_year_label] = col_prev_cum.reindex(all_items).fillna(0.0).values       # 선택연도 전월누계
     out["당월"] = col_month.reindex(all_items).fillna(0.0).values
     out["당월누적"] = col_ytd.reindex(all_items).fillna(0.0).values
 
     for c in companies:
         out[c] = by_comp.reindex(all_items).get(c, 0.0).fillna(0.0).values
 
-    out = out[["'24", "'25", "당월", "본사", "남통", "천진", "태국", "당월누적"]]
+    # 컬럼 순서 정리
+    out = out[[prev_year_label, used_year_label, "당월", "본사", "남통", "천진", "태국", "당월누적"]]
 
-
+    # 메타 정보(전월) 유지
     out.attrs["used_year"] = used_year
     out.attrs["used_month"] = used_month
     out.attrs["prev_year"] = prev_year
     out.attrs["prev_month"] = prev_month
 
     return out
+
 
 
 
@@ -2411,18 +2420,13 @@ def create_bs_by_items(
     data: pd.DataFrame,
     item_order: list[str],
 ) -> pd.DataFrame:
+
     df = _normalize_bs_simple(data)
 
-    # ─────────────────────────────
-    # ✔ 당월 / 전월 (연도 경계 포함)
-    #    - 당월(used_y, used_m) = year, month
-    #    - 전월(prev_y, prev_m) = month-1, 1월이면 전년도 12월
-    # ─────────────────────────────
-    used_y = year
-    used_m = month
-
-    # month_pairs: (전월, 당월)
-    month_pairs: list[tuple[int, int]] = []
+    # ───────────────
+    # ✔ 전월 / 당월 계산
+    # ───────────────
+    month_pairs = []
     for k in (1, 0):  # 1: 전월, 0: 당월
         y0 = year
         m0 = month - k
@@ -2433,36 +2437,38 @@ def create_bs_by_items(
 
     (prev_y, prev_m), (used_y, used_m) = month_pairs
 
-    # '24 컬럼(전년도 실적) → 전년도 12월(또는 가장 가까운 달)
+    # 전년도 12월(또는 가장 가까운 달)
     last_prev_year_m = _closest_month(df, year - 1, 12)
 
-    # ─────────────────────────────
-    # ✔ 회사 컬럼 고정: 특수강, 남통, 천진, 태국 + 기타 회사들
-    # ─────────────────────────────
+    # ───────────────
+    # ✔ 회사 컬럼 구성
+    # ───────────────
     fixed_comp = ['특수강', '남통', '천진', '태국']
-
     all_comp = sorted(df['구분2'].dropna().unique())
     others = [c for c in all_comp if c not in fixed_comp]
+    comp_cols = fixed_comp + others
 
-    comp_cols = fixed_comp + others  # 최종 회사 열 순서
+    # ───────────────
+    # ✔ 동적 연도 라벨 생성
+    # ───────────────
+    prev_year_label = f"'{(year-1) % 100:02d}"               # 예: '25
+    prev_month_label = f"'{(prev_y % 100):02d} {prev_m}월"   # 예: '25 12월
 
     rows: list[dict] = []
 
     for item in item_order:
         mask_item = df['구분3'] == item
 
-        def _sum_at(y: int | None, m: int | None) -> float:
+        def _sum_at(y, m):
             if y is None or m is None:
                 return 0.0
             sub = df[mask_item & (df['연도'] == y) & (df['월'] == m)]
             return float(sub['실적'].sum())
 
-        def _by_company(y: int | None, m: int | None) -> dict:
-            # 기본값 0으로 깔고 시작
+        def _by_company(y, m):
             result = {c: 0.0 for c in comp_cols}
             if y is None or m is None:
                 return result
-
             sub = df[mask_item & (df['연도'] == y) & (df['월'] == m)]
             s = sub.groupby('구분2')['실적'].sum()
             for c in comp_cols:
@@ -2470,39 +2476,34 @@ def create_bs_by_items(
                     result[c] = float(s[c])
             return result
 
-        # 전년도(대개 12월) 값
-        v24 = _sum_at(year - 1, last_prev_year_m)
-        # 전월 값: (prev_y, prev_m)
-        v25 = _sum_at(prev_y, prev_m)
-        # 당월 값: (used_y, used_m)
-        vm = _sum_at(used_y, used_m)
+        v_prev_year = _sum_at(year - 1, last_prev_year_m)  # 전년도 12월
+        v_prev_month = _sum_at(prev_y, prev_m)              # 전월
+        v_month = _sum_at(used_y, used_m)                  # 당월
         comp_v = _by_company(used_y, used_m)
 
         row = {
-            "'24": v24,
-            "'25": v25,
-            "당월": vm,
+            prev_year_label: v_prev_year,
+            prev_month_label: v_prev_month,
+            "당월": v_month,
             **comp_v,
-            "전월비 증감": vm - v25,
+            "전월비 증감": v_month - v_prev_month,
         }
         rows.append(row)
 
-    out = pd.DataFrame(
-        rows,
-        index=pd.Index(item_order, name='구분'),
-    ).fillna(0.0)
+    out = pd.DataFrame(rows, index=pd.Index(item_order, name='구분')).fillna(0.0)
 
-    # 보기 좋은 열 순서
-    out = out[["'24", "'25", "당월"] + comp_cols + ["전월비 증감"]]
+    # 열 순서 재정렬
+    out = out[[prev_year_label, prev_month_label, "당월"] + comp_cols + ["전월비 증감"]]
 
-    # 헤더/뷰에서 쓸 메타 정보
-    out.attrs['base_year']  = year
-    out.attrs['used_year']  = used_y
+    # 메타 저장
+    out.attrs['base_year'] = year
+    out.attrs['used_year'] = used_y
     out.attrs['used_month'] = used_m
-    out.attrs['prev_year']  = prev_y
+    out.attrs['prev_year'] = prev_y
     out.attrs['prev_month'] = prev_m
 
     return out
+
 
 
 
@@ -10699,4 +10700,3 @@ def build_f101(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
         df_out[c] = df_out[c].round(0).astype(int, errors="ignore")
 
     return df_out
-

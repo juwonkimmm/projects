@@ -356,17 +356,16 @@ with t1:
             year=int(st.session_state['year']),
             month=int(st.session_state['month']),
             data=raw
-        ) 
+        )
 
-                # ─ 표시용 숫자 포맷 ─
+        # ─ 표시용 숫자 포맷 ─
         def fmt_cell(x):
-            if pd.isna(x): 
+            if pd.isna(x):
                 return ""
             try:
                 v = float(x)
             except Exception:
                 return x
-            
             return f"({abs(int(round(v))):,})" if v < 0 else f"{int(round(v)):,}"
 
         disp = base.copy().fillna(0)
@@ -375,8 +374,7 @@ with t1:
 
         # ─ 구분을 2열로: 스페이서 컬럼 추가 ─
         disp = disp.reset_index()   # '구분' 컬럼 생성
-        # ─ 스페이서 컬럼을 2번째 위치에 추가 ─
-        SPACER_COL = "__spacer__"        
+        SPACER_COL = "__spacer__"
         disp.insert(0, SPACER_COL, "")
 
         # ─ 3단 헤더 구성 ─
@@ -385,12 +383,20 @@ with t1:
 
         month_i = c_idx['당월']
         acc_i   = c_idx['당월누적']
-        prev_col = next((c for c in cols if c.startswith("'") and c != "'24"), None)
+
+        # 🔹 연도 컬럼 자동 탐색: "'25", "'26" 같은 것들
+        year_cols = [c for c in cols if isinstance(c, str) and c.startswith("'")]
+        year_cols_sorted = sorted(year_cols, key=lambda s: int(s[1:])) if year_cols else []
+
+        # 전년도 누계 컬럼 (modules 쪽에서 prev_full_year = year-1)
+        prev_year_col = year_cols_sorted[0] if year_cols_sorted else None
+        # 선택연도 전월누계 컬럼 (보통 두 번째)
+        curr_prev_cum_col = year_cols_sorted[-1] if len(year_cols_sorted) >= 2 else prev_year_col
 
         cur_y = int(st.session_state['year'])
         cur_m = int(st.session_state['month'])
 
-        # (전월, 당월) 쌍 계산
+        # (전월, 당월) 쌍 계산 (기존 로직 그대로)
         month_pairs = []
         for k in (1, 0):   # 1: 전월, 0: 당월
             y0 = cur_y
@@ -403,21 +409,27 @@ with t1:
         (prev_y, prev_m), (used_y, used_m) = month_pairs
 
         # 헤더에 쓸 라벨
-        top_label = f"'{str(used_y)[-2:]} {used_m}월"       # 당월 상단 라벨
-        prev_text = f"'{str(prev_y)[-2:]} {prev_m}월"       # 전월 라벨
+        top_label = f"'{str(used_y)[-2:]} {used_m}월"   # 당월 상단 라벨
+        prev_text = f"'{str(prev_y)[-2:]} {prev_m}월"   # 전월 라벨
 
         hdr1 = [''] * len(cols)
         hdr2 = [''] * len(cols)
         hdr3 = [''] * len(cols)
 
-        # 1행: 상단 그룹/누적
+        # 1행: 상단 그룹 (당월 쪽에만 표시)
         hdr1[month_i] = top_label
-        
-        # 2행: 좌측 표제 + '24 + 전월 + 당월 + 누적
+
+        # 2행: 구분 + 전년도 누계 + 전월누계 + 당월 + 누적
         hdr2[c_idx['구분']] = '구분'
-        hdr2[c_idx["'24"]]  = "'24"
-        if prev_col is not None:
-            hdr2[c_idx[prev_col]] = prev_text
+
+        # 전년도 누계 컬럼 라벨 (예: '25)
+        if prev_year_col is not None:
+            hdr2[c_idx[prev_year_col]] = prev_year_col
+
+        # 전월 누계 컬럼 라벨 (예: '26 4월)
+        if curr_prev_cum_col is not None:
+            hdr2[c_idx[curr_prev_cum_col]] = prev_text
+
         hdr2[month_i] = '당월'
         hdr2[acc_i]   = '당월누적'
 
@@ -429,11 +441,12 @@ with t1:
         hdr_df   = pd.DataFrame([hdr1, hdr2, hdr3], columns=cols)
         disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
 
-
-
         # 회사 마지막 열 위치(경계선용)
         company_idxs = [c_idx[k] for k in ['본사','남통','천진','태국'] if k in c_idx]
         last_company_i = max(company_idxs) if company_idxs else month_i
+
+
+
 
         # ── CSS ──
         styles = [
@@ -763,9 +776,6 @@ with t1:
         file_name = st.secrets["sheets"]["f_3"]
         raw = pd.read_csv(file_name, dtype=str)
 
-        # 모듈 갱신(수정 반영)
-
-
         # 원하는 행 순서(=구분3 값)
         item_order = [
             '현금및현금성자산','매출채권','재고자산','유형자산','기타','자산총계',
@@ -783,15 +793,12 @@ with t1:
 
         # ─ 표시용 숫자 포맷 ─
         def fmt_cell(x):
-            if pd.isna(x): 
+            if pd.isna(x):
                 return ""
             try:
                 v = float(x)
             except Exception:
                 return x
-            
-            # [수정된 부분]
-            # 음수(v < 0)일 경우 괄호로 묶고, 양수나 0은 그대로 표시합니다.
             return f"({abs(int(round(v))):,})" if v < 0 else f"{int(round(v)):,}"
 
         disp = base.copy().fillna(0)
@@ -802,12 +809,27 @@ with t1:
         disp = disp.reset_index()   # '구분' 컬럼 생성
         SPACER = "__spacer__"
         disp.insert(0, SPACER, "")
+
         cols = disp.columns.tolist()
-        c_idx = {c:i for i,c in enumerate(cols)}
+        c_idx = {c: i for i, c in enumerate(cols)}
+
         gu_i    = c_idx['구분']
         month_i = c_idx['당월']
         diff_i  = c_idx['전월비 증감']
 
+        year_cols = [c for c in cols if isinstance(c, str) and c.startswith("'")]
+
+
+        prev_year_col = None
+        prev_month_col = None
+        if year_cols:
+
+            year_cols_sorted = sorted(year_cols, key=len)
+            prev_year_col = year_cols_sorted[0]
+            if len(year_cols_sorted) > 1:
+                prev_month_col = year_cols_sorted[1]
+            else:
+                prev_month_col = prev_year_col
 
         cur_y = int(st.session_state['year'])
         cur_m = int(st.session_state['month'])
@@ -828,23 +850,28 @@ with t1:
         top_label = f"'{str(used_y)[-2:]} {used_m}월"    # 당월
         prev_text = f"'{str(prev_y)[-2:]} {prev_m}월"    # 전월
 
-        # 회사 컬럼들
+        # 회사 컬럼들: 스페이서/구분/연도/당월/전월비 증감 제외
         company_labels = [
-            c for c in cols 
-            if c not in [SPACER,'구분',"'24","'25",'당월','전월비 증감']
+            c for c in cols
+            if c not in [SPACER, '구분', '당월', '전월비 증감'] and c not in year_cols
         ]
 
         # ─ 3단 헤더 ─
+        # 1행: 상단 그룹 (당월 위치에만 표시)
         hdr1 = [''] * len(cols)
         hdr1[month_i] = top_label
 
+        # 2행: '구분' + 전년도 + 전월 + 당월 + 전월비 증감
         hdr2 = [''] * len(cols)
         hdr2[gu_i] = '구분'
-        hdr2[c_idx["'24"]] = "'24"
-        hdr2[c_idx["'25"]] = prev_text
+        if prev_year_col is not None:
+            hdr2[c_idx[prev_year_col]] = prev_year_col
+        if prev_month_col is not None:
+            hdr2[c_idx[prev_month_col]] = prev_text
         hdr2[month_i] = '당월'
-        hdr2[diff_i] = '전월비 증감'
+        hdr2[diff_i]  = '전월비 증감'
 
+        # 3행: 회사 라벨
         hdr3 = [''] * len(cols)
         for k in company_labels:
             hdr3[c_idx[k]] = k
@@ -852,8 +879,9 @@ with t1:
         hdr_df   = pd.DataFrame([hdr1, hdr2, hdr3], columns=cols)
         disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
 
-
+        # 회사 마지막 열 위치(경계선용)
         last_company_i = max((c_idx[k] for k in company_labels), default=month_i)
+
 
         # ─ CSS ─
         styles = [
