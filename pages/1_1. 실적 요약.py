@@ -11,6 +11,8 @@ st.set_page_config(layout="wide", initial_sidebar_state="expanded")
 # =========================
 # 공통 테이블 렌더 (인덱스 숨김 + 중복 컬럼 안전)
 # =========================
+
+# 표꾸미기 CSS 시도 이전 Pandas 이용 함수
 def rowspan_like_for_index(blocks, level=2, header_rows=1):
     """
     멀티인덱스(행) 열에서, 연속된 행들을 '한 칸처럼' 보이게 하는 CSS 스타일을 만들어줍니다.
@@ -46,6 +48,7 @@ def rowspan_like_for_index(blocks, level=2, header_rows=1):
         })
     return styles
 
+# 표꾸미기 CSS 시도 이전 Pandas 이용 함수
 def with_inline_header_row(df: pd.DataFrame,
                            index_names=('', '', '구분'),
                            index_values=('', '', '구분')) -> pd.DataFrame:
@@ -72,6 +75,7 @@ def with_inline_header_row(df: pd.DataFrame,
     df2 = pd.concat([hdr, df], axis=0)
     return df2
 
+# 표 출력용 함수
 def display_styled_df(df, styles=None, highlight_cols=None, already_flat=False):
     """
     - already_flat=True: df가 이미 index 없는 평평한 형태(= reset_index 완료)라고 가정
@@ -191,6 +195,7 @@ def create_sidebar():
 
 create_sidebar()
 
+# 현구님 코드
 # =========================
 # 안전 로더 (원본 '톤' 단위 그대로)
 # =========================

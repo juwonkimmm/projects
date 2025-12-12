@@ -659,25 +659,23 @@ with t1:
 
 
 
-import re, io, pandas as pd
-from urllib.request import urlopen, Request
 
 # 로더(경로/URL 모두) + 천단위 콤마 제거
 
 
 
 
-def resolve_period(df: pd.DataFrame, sel_y: int, sel_m: int):
-    d = df.copy()
-    d["연도"] = pd.to_numeric(d["연도"], errors="coerce").astype("Int64")
-    d["월"]   = pd.to_numeric(d["월"],   errors="coerce").astype("Int64")
-    d = d.dropna(subset=["연도","월"])
-    periods = set(zip(d["연도"].astype(int), d["월"].astype(int)))
-    if (sel_y, sel_m) in periods:
-        return sel_y, sel_m, False
-    ly = int(d["연도"].max())
-    lm = int(d[d["연도"]==ly]["월"].max())
-    return ly, lm, True
+# def resolve_period(df: pd.DataFrame, sel_y: int, sel_m: int):
+#     d = df.copy()
+#     d["연도"] = pd.to_numeric(d["연도"], errors="coerce").astype("Int64")
+#     d["월"]   = pd.to_numeric(d["월"],   errors="coerce").astype("Int64")
+#     d = d.dropna(subset=["연도","월"])
+#     periods = set(zip(d["연도"].astype(int), d["월"].astype(int)))
+#     if (sel_y, sel_m) in periods:
+#         return sel_y, sel_m, False
+#     ly = int(d["연도"].max())
+#     lm = int(d[d["연도"]==ly]["월"].max())
+#     return ly, lm, True
 
 
 with t2:
