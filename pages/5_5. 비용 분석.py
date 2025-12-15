@@ -913,11 +913,17 @@ with t2:
     # 2) 선택 연도(this_year) 기준으로 전전전/전전/전/현 4개 연도 결정
     base_year = int(this_year)
     target_years = [base_year - 3, base_year - 2, base_year - 1, base_year]
-    col_labels  = [f"{str(y)[2:]}년" for y in target_years]   # "23년", "24년" ...
+    col_labels  = [f"{str(y)[2:]}년" for y in target_years]   
 
-    # 3) 구분2 인덱스 기준으로 빈 DF 생성
-    idx = sorted(pivot.index.tolist())
+    # 3) 행 순서 강제
+    fixed_order = ["선재", "봉강", "부산", "대구", "글로벌"]
+
+
+    idx = [x for x in fixed_order if x in pivot.index]
+
+
     df = pd.DataFrame(0.0, index=idx, columns=col_labels)
+
 
     # 4) 연도별 값 채우기 (없는 연도는 0 유지)
     for y, label in zip(target_years, col_labels):

@@ -280,10 +280,6 @@ with t3:
 
 with t4:
 
-    # view_f95.py (혹은 현재 뷰 파일 안에)
-
-
-
     st.markdown("<h4>1) 손익계산서 수정정상원가 </h4>", unsafe_allow_html=True)
     st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 백만원, 톤]</div>", unsafe_allow_html=True)
 
@@ -306,16 +302,20 @@ with t4:
             except Exception:
                 return v
             return f"{v:,.1f}%"
+        
+        def fmt_t(v):
+            if v == "" or pd.isna(v):
+                return ""
+            try:
+                v = float(v)
+            except Exception:
+                return v
+            return f"{v:,.0f}t"
 
-        # -----------------------
-        # 3. 포맷 적용
-        #    - DM%, (이익율) 행 -> % 포맷
-        #    - 나머지 -> 천단위 콤마 (백만원/톤)
-        # -----------------------
+
         value_cols = [c for c in body.columns if c not in ["구분1", "구분2", "구분3"]]
 
         for idx in body.index:
-            # ★ DM%, (이익율)은 이제 구분3 에 있으니까 여기서 체크
             is_pct_row = body.at[idx, "구분3"] in ("DM%", "(이익율)")
             for col in value_cols:
                 v = body.at[idx, col]
@@ -324,35 +324,86 @@ with t4:
                 else:
                     pass
 
+        for idx in body.index:
+            is_pct_row = body.at[idx, "구분2"] == "수량"
+            for col in value_cols:
+                v = body.at[idx, col]
+                if is_pct_row:
+                    body.at[idx, col] = fmt_t(v)
+                else:
+                    pass
+
         # -----------------------
         # 4. 테이블 스타일
         # -----------------------
         styles = [
-            # 헤더 가운데 정렬
+
             {
                 "selector": "th.col_heading",
                 "props": [("text-align", "center")]
             },
-            # 1~3열(구분1, 구분2, 구분3) 왼쪽 정렬
+
             {
                 "selector": "tbody td:nth-child(1), "
                             "tbody td:nth-child(2), "
                             "tbody td:nth-child(3)",
                 "props": [("text-align", "left")]
             },
-            # 4열부터 숫자열 오른쪽 정렬
+
             {
                 "selector": "tbody td:nth-child(n+4)",
                 "props": [("text-align", "right")]
             },
-            # 두 번째 컬럼은 줄바꿈 방지
+
             {
                 "selector": "tbody td:nth-child(2)",
                 "props": [("white-space", "nowrap")]
             },
         ]
+
+
         
-        #구분 조정
+        spacer_rules18 = [
+            {
+                'selector': f'td:nth-child(3)',
+                'props': [('border-right','3px solid gray !important')]
+               
+            }
+            # for r in (1,3,4,5,7,8,9,11,12,13,15,16,17,19,20,21,23,24,25)
+        ]
+
+        styles += spacer_rules18
+        
+
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child({r})',
+                'props': [('border-top','3px solid gray !important')]
+               
+            }
+            for r in (1,5,15,17,22,23,29,31)
+
+        ]
+
+        styles += spacer_rules1
+
+
+        spacer_rules17 = [
+            {
+                'selector': f'tbody tr:nth-child(4))',
+                'props': [('border-right','3px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules17
+
+
+        
+
+
+        
         cols = list(body.columns)
 
 
@@ -361,17 +412,6 @@ with t4:
         cols[2] = ""
 
         body.columns = cols
-
-
-
-
-
-
-
-
-
-
-
 
 
         display_styled_df(body, styles=styles, already_flat=True)
@@ -457,7 +497,7 @@ with t5:
             return f"{v:,.0f}"
 
         def fmt_pct(v):
-            # % 컬럼용 포맷: 1자리 소수 + %
+
             s = str(v)
             if s.strip() == "":
                 return ""
@@ -465,13 +505,12 @@ with t5:
                 s = s.replace(",", "").replace("%", "")
                 v = float(s)
             except Exception:
-                return v  # 숫자 아니면 그대로
+                return v  
             return f"{v:,.1f}%"   
 
         # 데이터 행: 4행부터
         data_rows = body.index >= 3
 
-                # 1) 단가/금액/영업이익(금액) 컬럼
         diff_cols = [
             c for c in body.columns
             if (
@@ -486,7 +525,6 @@ with t5:
         )
 
 
-        # 2) % 
         pct_cols = [
             c for c in body.columns
             if c.endswith("_%") 
@@ -532,6 +570,116 @@ with t5:
             },
         ]
 
+#########################
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+            for r in (1,3,4,5,7,8,9,11,12,13,15,16,17,19,20,21,23,24,25)
+        ]
+
+        styles += spacer_rules18
+
+        
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child(3)',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules1
+
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child(11)',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules1
+
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child(19)',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules1
+
+
+
+
+        spacer_rules2 = [
+            {
+                'selector': f'td:nth-child(2)',
+                'props': [('border-right','3px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules2
+
+        spacer_rules3 = [
+            {
+                'selector': f'td:nth-child({r})',
+                'props': [('border-right','3px solid gray !important')]
+               
+            }
+            for r in (6,10,14,18,22)
+        ]
+
+        styles += spacer_rules3
+
+        
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+            for r in (1,4,5,8,9,12,13,16,17,20,21,24,25)
+        ]
+
+        styles += spacer_rules18
+
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child(3) td:nth-child(1)',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules18
+
+
+
+
+
+
+
+
+
+
+        #구분 정리
+        for i in [3,4,5,7,8,9,11,12,13,15,16,17,19,20,21,23,24,25]:
+            body.iloc[0, i] = ""
+
+        for i in [3,5,7,9,11,13,15,17,19,21,23,25]:
+            body.iloc[1, i] = ""
+        
 
         display_styled_df(body, styles=styles, already_flat=True)
 
@@ -712,6 +860,141 @@ with t5:
             },
         ]
 
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+            # for r in (1,3,4,5,7,8,9,11,12,13,15,16,17,19,20,21,23,24,25)
+            for r in (1,4,5,6,8,9,10,12,13,14,16,17,18,20,21,22,24,25,26)
+        ]
+
+        styles += spacer_rules18
+
+        
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child(3)',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules1
+
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child(6)',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules1
+
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child(9)',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules1
+
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child(12)',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules1
+
+
+
+
+        # spacer_rules2 = [
+        #     {
+        #         'selector': f'td:nth-child(2)',
+        #         'props': [('border-right','3px solid gray !important')]
+               
+        #     }
+
+        # ]
+
+        # styles += spacer_rules2
+
+        spacer_rules3 = [
+            {
+                'selector': f'td:nth-child({r})',
+                'props': [('border-right','3px solid gray !important')]
+               
+            }
+            # for r in (6,10,14,18,22)
+            for r in (2,3,7,11,15,19,23)
+        ]
+
+        styles += spacer_rules3
+
+        
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+            # for r in (4,5,8,9,12,13,16,17,20,21,24,25)
+            for r in (1,5,6,9,10,13,14,17,18,21,22,25,26)
+        ]
+
+        styles += spacer_rules18
+
+        
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+            for r in (3,13)
+
+        ]
+
+        styles += spacer_rules18
+
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child(13) td:nth-child(2)',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules18
+
+
+
+
+
+        #구분 정리
+        # for i in [3,4,5,7,8,9,11,12,13,15,16,17,19,20,21,23,24,25]:
+        for i in [4,5,6,8,9,10,12,13,14,16,17,18,20,21,22,24,25,26]:
+            body.iloc[0, i] = ""
+
+        # for i in [3,5,7,9,11,13,15,17,19,21,23,25]:
+        for i in [4,6,8,10,12,14,16,18,20,22,24,26]:
+            body.iloc[1, i] = ""
+        
+
+
 
         display_styled_df(body, styles=styles, already_flat=True)
 
@@ -886,6 +1169,147 @@ with t5:
                 "props": [("white-space", "nowrap")],
             },
         ]
+
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+            # for r in (1,3,4,5,7,8,9,11,12,13,15,16,17,19,20,21,23,24,25)
+            for r in (1,4,5,6,8,9,10,12,13,14,16,17,18,20,21,22,24,25,26)
+        ]
+
+        styles += spacer_rules18
+
+        
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child(3)',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules1
+
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child(18)',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules1
+
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child(25)',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules1
+
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child(41)',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules1
+
+
+
+
+        # spacer_rules2 = [
+        #     {
+        #         'selector': f'td:nth-child(2)',
+        #         'props': [('border-right','3px solid gray !important')]
+               
+        #     }
+
+        # ]
+
+        # styles += spacer_rules2
+
+        spacer_rules3 = [
+            {
+                'selector': f'td:nth-child({r})',
+                'props': [('border-right','3px solid gray !important')]
+               
+            }
+            # for r in (6,10,14,18,22)
+            for r in (2,3,7,11,15,19,23)
+        ]
+
+        styles += spacer_rules3
+
+        
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+            # for r in (4,5,8,9,12,13,16,17,20,21,24,25)
+            for r in (1,5,6,9,10,13,14,17,18,21,22,25,26)
+        ]
+
+        styles += spacer_rules18
+
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+            for r in (3,42)
+
+        ]
+
+        styles += spacer_rules18
+
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child(42) td:nth-child(2)',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+
+
+        ]
+
+        styles += spacer_rules18
+        
+
+
+
+
+
+
+
+
+
+
+        #구분 정리
+        # for i in [3,4,5,7,8,9,11,12,13,15,16,17,19,20,21,23,24,25]:
+        for i in [4,5,6,8,9,10,12,13,14,16,17,18,20,21,22,24,25,26]:
+            body.iloc[0, i] = ""
+
+        # for i in [3,5,7,9,11,13,15,17,19,21,23,25]:
+        for i in [4,6,8,10,12,14,16,18,20,22,24,26]:
+            body.iloc[1, i] = ""
+
+        
 
         display_styled_df(body, styles=styles, already_flat=True)
 
@@ -1063,6 +1487,117 @@ with t5:
             },
         ]
 
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+            # for r in (1,3,4,5,7,8,9,11,12,13,15,16,17,19,20,21,23,24,25)
+            for r in (3,4,5,7,8,9,11,12,13,15,16,17,19,20,21,23,24,25)
+        ]
+
+        styles += spacer_rules18
+
+        
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child(3)',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules1
+
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child(9)',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules1
+
+
+
+
+
+
+        # # spacer_rules2 = [
+        # #     {
+        # #         'selector': f'td:nth-child(2)',
+        # #         'props': [('border-right','3px solid gray !important')]
+               
+        # #     }
+
+        # # ]
+
+        # # styles += spacer_rules2
+
+        spacer_rules3 = [
+            {
+                'selector': f'td:nth-child({r})',
+                'props': [('border-right','3px solid gray !important')]
+               
+            }
+            # for r in (6,10,14,18,22)
+            for r in (1,2,6,10,14,18,22)
+        ]
+
+        styles += spacer_rules3
+
+        
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+            for r in (4,5,8,9,12,13,16,17,20,21,24,25)
+            # for r in (1,5,6,9,10,13,14,17,18,21,22,25,26)
+        ]
+
+        styles += spacer_rules18
+
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child(10) td:nth-child(1)',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+
+
+        ]
+
+        styles += spacer_rules18
+
+
+        
+
+
+
+
+
+
+
+
+
+
+
+        #구분 정리
+        for i in [3,4,5,7,8,9,11,12,13,15,16,17,19,20,21,23,24,25]:
+            body.iloc[0, i] = ""
+
+
+        for i in [3,5,7,9,11,13,15,17,19,21,23,25]:
+            body.iloc[1, i] = ""
+
+
+
         display_styled_df(body, styles=styles, already_flat=True)
 
     except Exception as e:
@@ -1236,6 +1771,145 @@ with t5:
                 "props": [("white-space", "nowrap")],
             },
         ]
+
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+            # for r in (1,3,4,5,7,8,9,11,12,13,15,16,17,19,20,21,23,24,25)
+            for r in (1,4,5,6,8,9,10,12,13,14,16,17,18,20,21,22,24,25,26)
+        ]
+
+        styles += spacer_rules18
+
+        
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child(3)',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules1
+
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child(10)',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules1
+
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child(17)',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules1
+
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child(24)',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules1
+
+
+
+
+        # spacer_rules2 = [
+        #     {
+        #         'selector': f'td:nth-child(2)',
+        #         'props': [('border-right','3px solid gray !important')]
+               
+        #     }
+
+        # ]
+
+        # styles += spacer_rules2
+
+        spacer_rules3 = [
+            {
+                'selector': f'td:nth-child({r})',
+                'props': [('border-right','3px solid gray !important')]
+               
+            }
+            # for r in (6,10,14,18,22)
+            for r in (2,3,7,11,15,19,23)
+        ]
+
+        styles += spacer_rules3
+
+        
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+            # for r in (4,5,8,9,12,13,16,17,20,21,24,25)
+            for r in (1,5,6,9,10,13,14,17,18,21,22,25,26)
+        ]
+
+        styles += spacer_rules18
+
+
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+            for r in (3,25)
+
+        ]
+
+        styles += spacer_rules18
+
+
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child(25) td:nth-child(2)',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+
+
+        ]
+
+        styles += spacer_rules18
+
+
+
+
+
+
+
+
+
+        #구분 정리
+        for i in [4,5,6,8,9,10,12,13,14,16,17,18,20,21,22,24,25,26]:
+            body.iloc[0, i] = ""
+
+
+        for i in [4,6,8,10,12,14,16,18,20,22,24,26]:
+            body.iloc[1, i] = ""
+
 
         display_styled_df(body, styles=styles, already_flat=True)
 
@@ -1432,6 +2106,99 @@ with t5:
                 "props": [("white-space", "nowrap")],
             },
         ]
+
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+            # for r in (1,3,4,5,7,8,9,11,12,13,15,16,17,19,20,21,23,24,25)
+            for r in (1,3,4,5,6,7,8,10,11,12,13,14,15,17,18,19,20,21,22)
+        ]
+
+        styles += spacer_rules18
+
+        
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child({r})',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+            for r in (3,9,15,21)
+
+        ]
+
+        styles += spacer_rules1
+
+        
+
+
+
+
+        # # spacer_rules2 = [
+        # #     {
+        # #         'selector': f'td:nth-child(2)',
+        # #         'props': [('border-right','3px solid gray !important')]
+               
+        # #     }
+
+        # # ]
+
+        # # styles += spacer_rules2
+
+        spacer_rules3 = [
+            {
+                'selector': f'td:nth-child({r})',
+                'props': [('border-right','3px solid gray !important')]
+               
+            }
+            # for r in (6,10,14,18,22)
+            for r in (2,9,16)
+        ]
+
+        styles += spacer_rules3
+
+        
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+            # for r in (4,5,8,9,12,13,16,17,20,21,24,25)
+            for r in (1,4,5,8,11,12,15,18,19,22)
+        ]
+
+        styles += spacer_rules18
+
+
+        spacer_rules18 = [
+            {
+                'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+            for r in (3,22)
+
+        ]
+
+        styles += spacer_rules18
+
+
+
+
+
+
+
+        #구분 정리
+        for i in [3,4,5,6,7,8,10,11,12,13,14,15,17,18,19,20,21,22]:
+            body.iloc[0, i] = ""
+
+
+        for i in [3,5,8,10,12,15,17,19,22]:
+            body.iloc[1, i] = ""
 
         display_styled_df(body, styles=styles, already_flat=True)
 

@@ -9364,7 +9364,6 @@ def build_f95(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
         {"type": "money", "g2": "경상이익"},
         {"type": "pct",   "g2": "(이익율)"},
 
-        {"type": "blank"},   # 공백 라인
 
         {"type": "money", "g2": "경상이익_재경마감"},
         {"type": "pct",   "g2": "(이익율)"},
