@@ -1092,18 +1092,20 @@ with t3:
     )
 
     # ---- 행 하이라이트 ----
-    def _row_style(row):
-        t = df_tbl.loc[row.name, "_row_type"]
-        if t == "section_total":
-            return ["font-weight:600; background-color:#f5f5f5"] * len(row)
-        if t == "grand_total":
-            return ["font-weight:700; background-color:#ededed"] * len(row)
-        return [""] * len(row)
+    # def _row_style(row):
+    #     t = df_tbl.loc[row.name, "_row_type"]
+    #     if t == "section_total":
+    #         return ["font-weight:600; background-color:#f5f5f5"] * len(row)
+    #     if t == "grand_total":
+    #         return ["font-weight:700; background-color:#ededed"] * len(row)
+    #     return [""] * len(row)
 
-    sty = sty.apply(_row_style, axis=1)
+    # sty = sty.apply(_row_style, axis=1)
 
     # ---- CSS 커스텀 스타일 ----
     styles_prod = []
+    styles_prod.append(
+    {'selector': 'thead th', 'props': [('border-top','3px solid gray !important')]})
 
     styles_prod.append({
         'selector': 'tbody tr:nth-child(6) td:nth-child(2)',
@@ -1128,22 +1130,41 @@ with t3:
             "props": [("border-bottom", "2px solid white !important")]
         })
 
+    for i in range(1,11):
+        styles_prod.append({
+            "selector": f"tbody tr:nth-child({i}) td:nth-of-type(1)",
+            "props": [("border-right", "3px solid gray !important")]
+        })
+
+    for i in range(12,20):
+        styles_prod.append({
+            "selector": f"tbody tr:nth-child({i}) td:nth-of-type(1)",
+            "props": [("border-right", "3px solid gray !important")]
+        })
+
+    for i in (10,19):
+        styles_prod.append({
+            "selector": f"tbody tr:nth-child({i}) td:nth-of-type(2)",
+            "props": [("border-bottom", "3px solid gray !important")]
+        })
+    
+    styles_prod.append({
+            "selector": f"td:nth-of-type(2)",
+            "props": [("border-right", "3px solid gray !important")]
+        })
+
+
     styles_prod.append({
         'selector': 'tbody tr:nth-child(11)',
         'props': [('border-bottom', '3px solid gray !important')]
     })
 
-    for i in range(1, 11+1):
-        styles_prod.append({
-            "selector": f"tbody tr:nth-child({i})",
-            "props": [("border-right", "3px solid gray !important")]
-        })
+    styles_prod.append({
+        'selector': 'tbody tr:nth-child(1)',
+        'props': [('border-top', '3px solid gray !important')]
+    })
 
-    for i in range(12, 20+1):
-        styles_prod.append({
-            "selector": f"tbody tr:nth-child({i})",
-            "props": [("border-right", "3px solid gray !important")]
-        })
+
 
     styles_prod.append({
         'selector': 'tbody tr:nth-child(20)',

@@ -368,9 +368,14 @@ with t1:
 
         styles_prod = []
 
-    
+        
 
         # 1행 2열(첫 번째 데이터 행의 두 번째 셀)
+        styles_prod.append({'selector': 'thead th', 'props': [('text-align','center'),
+                                                ('padding','10px 8px'),
+                                                ('font-weight','700'),
+                                                ('border-top','3px solid gray !important')]},)
+
         styles_prod.append({
             'selector': 'tbody tr:nth-child(1) td:nth-child(2)',
 
@@ -583,9 +588,24 @@ with t1:
         })
 
         styles_prod.append({
+            'selector': 'tbody tr:nth-child(1)',
+
+            'props': [('border-top', '3px solid gray !important')]
+        })
+
+
+
+        styles_prod.append({
+            'selector': f'tbody td:nth-child(2)',
+            'props': [('border-right','3px solid gray !important')]
+        })
+
+        styles_prod.append({
             'selector': 'thead tr:last-child th:nth-child(1)',  # 마지막 헤더 행의 1열(= 구분)
             'props': [('border-right', '2px solid white !important')]
         })
+
+        
 
         
 
@@ -795,6 +815,16 @@ with t2:
             "selector": "th.row_heading.level0",          # level0 인덱스 전체
             "props": [("border-left", "3px solid grey")]  # 왼쪽 굵은 선
         })
+
+        styles_def.append({
+            'selector': 'tbody tr:nth-child(1)',
+
+            'props': [('border-top', '3px solid gray !important')]
+        })
+
+
+
+
         
 
         # 빈 인덱스(th.blank) 회색 배경 제거
@@ -1026,6 +1056,12 @@ with t3:
         styles_def.append({
             "selector": "th.row_heading.level0",          # level0 인덱스 전체
             "props": [("border-left", "3px solid grey")]  # 왼쪽 굵은 선
+        })
+
+        styles_def.append({
+            'selector': 'tbody tr:nth-child(1)',
+
+            'props': [('border-top', '3px solid gray !important')]
         })
         
 

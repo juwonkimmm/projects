@@ -11,8 +11,6 @@ st.set_page_config(layout="wide", initial_sidebar_state="expanded")
 # =========================
 # 공통 테이블 렌더 (인덱스 숨김 + 중복 컬럼 안전)
 # =========================
-
-# 표꾸미기 CSS 시도 이전 Pandas 이용 함수
 def rowspan_like_for_index(blocks, level=2, header_rows=1):
     """
     멀티인덱스(행) 열에서, 연속된 행들을 '한 칸처럼' 보이게 하는 CSS 스타일을 만들어줍니다.
@@ -48,7 +46,6 @@ def rowspan_like_for_index(blocks, level=2, header_rows=1):
         })
     return styles
 
-# 표꾸미기 CSS 시도 이전 Pandas 이용 함수
 def with_inline_header_row(df: pd.DataFrame,
                            index_names=('', '', '구분'),
                            index_values=('', '', '구분')) -> pd.DataFrame:
@@ -75,7 +72,6 @@ def with_inline_header_row(df: pd.DataFrame,
     df2 = pd.concat([hdr, df], axis=0)
     return df2
 
-# 표 출력용 함수
 def display_styled_df(df, styles=None, highlight_cols=None, already_flat=False):
     """
     - already_flat=True: df가 이미 index 없는 평평한 형태(= reset_index 완료)라고 가정
@@ -195,7 +191,6 @@ def create_sidebar():
 
 create_sidebar()
 
-# 현구님 코드
 # =========================
 # 안전 로더 (원본 '톤' 단위 그대로)
 # =========================
@@ -331,11 +326,83 @@ with t1:
 
         ]
 
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child({r})',
+                'props': [('border-top','3px solid gray !important')]
+               
+            }
+            for r in (1,3)
+
+        ]
+
+        styles += spacer_rules1
+
+
+
+        spacer_rules2 = [
+            {
+                'selector': f' td:nth-child(1)',
+                'props': [('border-right','2px solid gray !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules2
+
+        spacer_rules2 = [
+            {
+                'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+                'props': [('border-right','3px solid gray !important')]
+               
+            }
+            for r in (5,6,9,10)
+        ]
+
+        styles += spacer_rules2
+
+        spacer_rules2 = [
+            {
+                'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
+                'props': [('border-right','3px solid gray !important')]
+               
+            }
+            for r in (5,6,7,9,10)
+        ]
+
+        styles += spacer_rules2
+
+        spacer_rules2 = [
+            {
+                'selector': f'tbody tr:nth-child(2) td:nth-child({r})',
+                'props': [('border-top','3px solid gray !important')]
+               
+            }
+            for r in (8,9)
+        ]
+
+        styles += spacer_rules2
+
+        spacer_rules2 = [
+            {
+                'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+            for r in (7,8)
+        ]
+
+        styles += spacer_rules2
+
+        
+
+
         display_styled_df(
             disp_vis,
             styles=styles,
             already_flat=True,
-            highlight_cols=highlight_cols
+
         )
 
         st.caption("각 %는 계산")
@@ -1400,6 +1467,18 @@ with t1:
 
             spacer_rules1 = [
                 {
+                    'selector': f'tbody tr:nth-child(1)',
+                    'props': [('border-top','3px solid gray !important')]
+                
+                }
+
+
+            ]
+
+            styles += spacer_rules1
+
+            spacer_rules1 = [
+                {
                     'selector': f'tbody tr:nth-child({r}) td:nth-child(1)',
                     'props': [('border-bottom','2px solid white ')],
                 }
@@ -1485,6 +1564,17 @@ with t1:
             ]
             styles  += spacer_rules7
 
+            spacer_rules1 = [
+                {
+                    'selector': f'tbody td:nth-child(2)',
+                    'props': [('border-right','3px solid gray !important')]
+                
+                }
+
+            ]
+
+            styles += spacer_rules1
+
             display_styled_df(disp_vis, styles=styles, already_flat=True)
             display_memo('f_4', year, month)
 
@@ -1528,7 +1618,9 @@ with t1:
                     'props': [
                         ('text-align','center'),
                         ('padding','10px 8px'),
-                        ('font-weight','600')
+                        ('font-weight','600'),
+                        ('border-top','3px solid gray !important'),
+                        
                     ]
                 },
                 {
@@ -1544,6 +1636,28 @@ with t1:
                     'props': [('text-align','left')]
                 },
             ]
+            spacer_rules1 = [
+                {
+                    'selector': f'tbody tr:nth-child(1)',
+                    'props': [('border-top','3px solid gray !important')]
+                
+                }
+ 
+
+            ]
+
+            styles += spacer_rules1
+
+            spacer_rules1 = [
+                {
+                    'selector': f'tbody td:nth-child(2)',
+                    'props': [('border-left','3px solid gray !important')]
+                
+                }
+
+            ]
+
+            styles += spacer_rules1
 
             display_styled_df(
                 disp,
@@ -2250,17 +2364,187 @@ with t2:
     st.divider()
 
     ##### 원재료 입고-기초 단가 차이 #####
-    st.divider()
 
     st.markdown("<h4>4) 원재료 입고-기초 단가 차이</h4>", unsafe_allow_html=True)
+
+
+    try:
+        file_name = st.secrets["sheets"]["f_9"]
+        raw = pd.read_csv(file_name, dtype=str)
+
+        year = int(st.session_state["year"])
+        month = int(st.session_state["month"])
+
+        ar = modules.create_9(year=year, month=month, data=raw)
+        disp = ar.copy()
+
+        # 숫자 변환(계산용)
+        for c in ["중량", "금액", "단가"]:
+            disp[c] = pd.to_numeric(disp[c].astype(str).str.replace(",", ""), errors="coerce").fillna(0)
+
+        # 단위 정리
+        def round_then_drop(v: float, divisor: int) -> int:
+            """
+            v/divisor -> 소수 1자리 반올림 -> 소수 버리고 정수만(= int, 0쪽으로 절사)
+            """
+            x = round(v / divisor, 1)  # 소수 1자리 반올림
+            return int(x)              
+        
+
+        def fmt_int_plain(n: int) -> str:
+
+            return f"{n:,}"
+
+        # 표시값 만들기
+        disp["중량"] = disp["중량"].apply(lambda v: fmt_int_plain(round_then_drop(v, 1_000)))
+        disp["금액"] = disp["금액"].apply(lambda v: fmt_int_plain(round_then_drop(v, 1_000_000)))
+
+
+
+        cols = disp.columns.tolist()
+        c_idx = {c: i for i, c in enumerate(cols)}
+
+        hdr1 = [""] * len(cols)
+        hdr1[c_idx["메이커"]] = "메이커"
+        hdr1[c_idx["중량"]] = "중량"
+        hdr1[c_idx["금액"]] = "금액"
+        hdr1[c_idx["단가"]] = "단가"
+
+        hdr_df = pd.DataFrame([hdr1], columns=cols)
+        disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
+
+
+
+        styles = [
+            {"selector": "thead", "props": [("display", "none")]},
+
+            {
+                "selector": "tbody tr:nth-child(1) td",
+                "props": [
+                    ("text-align", "center"),
+                    ("padding", "6px 8px"),
+                    ("font-weight", "700"),
+                    ("border-bottom", "3px solid gray"),
+                ],
+            },
+
+            {"selector": "tbody tr:nth-child(n+2) td:nth-child(1)", "props": [("text-align", "left")]},
+            {"selector": "tbody tr:nth-child(n+2) td:nth-child(n+2)", "props": [("text-align", "right")]},
+            {"selector": "tbody td:nth-child(1)", "props": [("border-right", "3px solid gray")]},
+
+
+        ]
+
+        spacer_rules1 = [
+                {
+                    'selector': f'tbody tr:nth-child(1)',
+                    'props': [('border-top','3px solid gray !important')]
+                
+                }
+
+
+            ]
+
+        styles += spacer_rules1
+
+        display_styled_df(disp_vis, styles=styles, already_flat=True)
+
+    except Exception as e:
+        st.error(f"원재료 입고-기초 단가 차이 표 생성 중 오류: {e}")
+
+
 
     ##### 원재료 입고-기초 단가 차이 거래처 기준 #####
     st.divider()
 
     st.markdown("<h4>5) 원재료 입고-기초 단가 차이 거래처 기준</h4>", unsafe_allow_html=True)
 
+    try:
+        file_name = st.secrets["sheets"]["f_10"]
+        raw = pd.read_csv(file_name, dtype=str)
+
+        year = int(st.session_state["year"])
+        month = int(st.session_state["month"])
+
+        ar = modules.create_10(year=year, month=month, data=raw)
+        disp = ar.copy()
+
+        # 숫자 변환(계산용)
+        for c in ["금액", "단가"]:
+            disp[c] = pd.to_numeric(disp[c].astype(str).str.replace(",", ""), errors="coerce").fillna(0)
+
+        # 단위 정리
+        def round_then_drop(v: float, divisor: int) -> int:
+            """
+            v/divisor -> 소수 1자리 반올림 -> 소수 버리고 정수만(= int, 0쪽으로 절사)
+            """
+            x = round(v / divisor, 1)  # 소수 1자리 반올림
+            return int(x)              
+        
+
+        def fmt_int_plain(n: int) -> str:
+
+            return f"{n:,}"
+
+        # 표시값 만들기
+        disp["금액"] = disp["금액"].apply(lambda v: fmt_int_plain(round_then_drop(v, 1_000_000)))
+
+
+
+
+        cols = disp.columns.tolist()
+        c_idx = {c: i for i, c in enumerate(cols)}
+
+        hdr1 = [""] * len(cols)
+        hdr1[c_idx["메이커"]] = "메이커"
+        hdr1[c_idx["금액"]] = "금액"
+        hdr1[c_idx["단가"]] = "단가"
+
+        hdr_df = pd.DataFrame([hdr1], columns=cols)
+        disp_vis = pd.concat([hdr_df, disp], ignore_index=True)
+
+
+
+        styles = [
+            {"selector": "thead", "props": [("display", "none")]},
+
+            {
+                "selector": "tbody tr:nth-child(1) td",
+                "props": [
+                    ("text-align", "center"),
+                    ("padding", "6px 8px"),
+                    ("font-weight", "700"),
+                    ("border-bottom", "3px solid gray"),
+                ],
+            },
+
+            {"selector": "tbody tr:nth-child(n+2) td:nth-child(1)", "props": [("text-align", "left")]},
+            {"selector": "tbody tr:nth-child(n+2) td:nth-child(n+2)", "props": [("text-align", "right")]},
+            {"selector": "tbody td:nth-child(1)", "props": [("border-right", "3px solid gray")]},
+
+
+        ]
+
+        spacer_rules1 = [
+                {
+                    'selector': f'tbody tr:nth-child(1)',
+                    'props': [('border-top','3px solid gray !important')]
+                
+                }
+
+
+            ]
+
+        styles += spacer_rules1
+
+        display_styled_df(disp_vis, styles=styles, already_flat=True)
+
+    except Exception as e:
+        st.error(f"원재료 입고-기초 단가 차이 거래처 기준 표 생성 중 오류: {e}")
+
 
     st.divider()
+
     st.markdown("<h4>6) 제품수불표</h4>", unsafe_allow_html=True)
     st.markdown("<div style='text-align:left; font-size:13px; color:#666;'>[단위: 백만원]</div>", unsafe_allow_html=True)
 
@@ -2355,6 +2639,17 @@ with t2:
                 'props': [('display','none')]
             },
         ]
+        spacer_rules1 = [
+                {
+                    'selector': f'tbody tr:nth-child(1)',
+                    'props': [('border-top','3px solid gray !important')]
+                
+                }
+
+
+            ]
+
+        styles += spacer_rules1
 
         
         display_styled_df(disp_vis, styles=styles, already_flat=True)
@@ -2835,6 +3130,18 @@ with t2:
         ]
 
         spacer_rules1 = [
+                {
+                    'selector': f'tbody tr:nth-child(1)',
+                    'props': [('border-top','3px solid gray !important')]
+                
+                }
+
+
+            ]
+
+        styles += spacer_rules1
+
+        spacer_rules1 = [
                     {
                         'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
                         'props': [('text-align','left')]
@@ -3176,8 +3483,7 @@ with t2:
             raw = pd.read_csv(file_name, dtype=str)
 
             # 최신 modules 반영
-            import importlib
-            importlib.invalidate_caches(); importlib.reload(modules)
+
 
             # 본사 전용 표 생성 
             snap = modules.create_turnover_special_steel(
@@ -3217,13 +3523,37 @@ with t2:
 
                 {'selector': 'thead th', 'props': [('text-align','center'),
                                                 ('padding','10px 8px'),
-                                                ('font-weight','700')]},
+                                                ('font-weight','700'),
+                                                ('border-top','3px solid gray !important')]},
 
                 {'selector': 'tbody td', 'props': [('text-align','right'), ('padding','8px 10px')]},
 
                 {'selector': 'tbody td:first-child', 'props': [('text-align','center')]},
 
             ]
+            spacer_rules1 = [
+                {
+                    'selector': f'tbody tr:nth-child(1)',
+                    'props': [('border-top','3px solid gray !important')]
+                
+                }
+
+
+            ]
+
+            styles += spacer_rules1
+
+            spacer_rules1 = [
+                {
+                    'selector': f'tbody td:nth-child(1)',
+                    'props': [('border-right','3px solid gray !important')]
+                
+                }
+
+
+            ]
+
+            styles += spacer_rules1
 
 
             display_styled_df(disp, styles=styles, already_flat=True)
@@ -3289,13 +3619,39 @@ with t2:
 
                 {'selector': 'thead th', 'props': [('text-align','center'),
                                                 ('padding','10px 8px'),
-                                                ('font-weight','700')]},
+                                                ('font-weight','700'),
+                                                ('border-top','3px solid gray !important')]},
 
                 {'selector': 'tbody td', 'props': [('text-align','right'), ('padding','8px 10px')]},
 
                 {'selector': 'tbody td:first-child', 'props': [('text-align','center')]},
 
             ]
+
+            spacer_rules1 = [
+                {
+                    'selector': f'tbody tr:nth-child(1)',
+                    'props': [('border-top','3px solid gray !important')]
+                
+                }
+
+
+
+            ]
+
+            styles += spacer_rules1
+
+            spacer_rules1 = [
+                {
+                    'selector': f'tbody td:nth-child(1)',
+                    'props': [('border-right','3px solid gray !important')]
+                
+                }
+
+
+            ]
+
+            styles += spacer_rules1
 
 
             display_styled_df(disp, styles=styles, already_flat=True)

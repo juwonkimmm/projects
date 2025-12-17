@@ -659,23 +659,25 @@ with t1:
 
 
 
+import re, io, pandas as pd
+from urllib.request import urlopen, Request
 
 # 로더(경로/URL 모두) + 천단위 콤마 제거
 
 
 
 
-# def resolve_period(df: pd.DataFrame, sel_y: int, sel_m: int):
-#     d = df.copy()
-#     d["연도"] = pd.to_numeric(d["연도"], errors="coerce").astype("Int64")
-#     d["월"]   = pd.to_numeric(d["월"],   errors="coerce").astype("Int64")
-#     d = d.dropna(subset=["연도","월"])
-#     periods = set(zip(d["연도"].astype(int), d["월"].astype(int)))
-#     if (sel_y, sel_m) in periods:
-#         return sel_y, sel_m, False
-#     ly = int(d["연도"].max())
-#     lm = int(d[d["연도"]==ly]["월"].max())
-#     return ly, lm, True
+def resolve_period(df: pd.DataFrame, sel_y: int, sel_m: int):
+    d = df.copy()
+    d["연도"] = pd.to_numeric(d["연도"], errors="coerce").astype("Int64")
+    d["월"]   = pd.to_numeric(d["월"],   errors="coerce").astype("Int64")
+    d = d.dropna(subset=["연도","월"])
+    periods = set(zip(d["연도"].astype(int), d["월"].astype(int)))
+    if (sel_y, sel_m) in periods:
+        return sel_y, sel_m, False
+    ly = int(d["연도"].max())
+    lm = int(d[d["연도"]==ly]["월"].max())
+    return ly, lm, True
 
 
 with t2:
@@ -972,6 +974,8 @@ with t3:
             # 항목(4번째) 오른쪽 굵은 경계
             {'selector': 'tbody tr:nth-child(n+1) td:nth-child(4)', 'props':[('border-right','3px solid gray !important')]},
         ]
+
+        
 
         data_start = 5
         n_cols = len(cols)
@@ -1633,7 +1637,7 @@ with t6:
 
     try:
         file_name = st.secrets["sheets"]["f_28"]
-        df_src = pd.read_csv(file_name, dtype=str)  # 숫자 변환은 모듈에서 처리
+        df_src = pd.read_csv(file_name, dtype=str)  
 
         sel_y = int(st.session_state["year"])
         sel_m = int(st.session_state["month"])
@@ -1696,8 +1700,7 @@ with t6:
 
 
         display_styled_df(body, styles=styles, already_flat=True)
-        st.markdown("<div style='text-align:left; font-size:17px; color:black;,  font-weight: bold;'>* '25.계획 성과급 178.4% + 격려금 100% 반영</div>", unsafe_allow_html=True)
-        st.markdown("<div style='text-align:left; font-size:17px; color:black;,  font-weight: bold;'>* '24.실적 성과급 130%, 17.8억 + 격려 인당 350만원, 12.1억 지급</div>", unsafe_allow_html=True)
+        display_memo('f_28', sel_y, sel_m)
 
     except Exception as e:
         st.error(f"성과급 및 격려금 표 생성 오류: {e}")

@@ -3357,9 +3357,7 @@ def create_item_pl_from_flat(
 
 
 ## 수정원가기준 손익 (별도)
-import pandas as pd
-import numpy as np
-import re
+
 
 def _parse_number(x):
     if pd.isna(x): return np.nan
@@ -3446,13 +3444,113 @@ def create_item_change_cost_from_flat(
 
     return out
 
+##### 원재료 입고-기초 단가 차이 #####
+
+
+
+def create_9(year: int, month: int, data: pd.DataFrame) -> pd.DataFrame:
+    df = data.copy()
+
+    df["연도"] = pd.to_numeric(df["연도"], errors="coerce")
+    df["월"] = pd.to_numeric(df["월"], errors="coerce")
+    df["실적"] = pd.to_numeric(df["실적"].astype(str).str.replace(",", ""), errors="coerce")
+
+    target_name = "원재료 입고-기초 단가 차이"
+    df = df[(df["구분1"] == target_name) & (df["연도"] == year) & (df["월"] == month)].copy()
+
+    pvt = (
+        df.pivot_table(
+            index="구분2",      # 메이커
+            columns="구분3",    # 중량/금액/단가
+            values="실적",
+            aggfunc="sum",
+            fill_value=0,
+        )
+        .reset_index()
+        .rename(columns={"구분2": "메이커"})
+    )
+
+    for col in ["중량", "금액", "단가"]:
+        if col not in pvt.columns:
+            pvt[col] = 0
+
+    pvt = pvt[["메이커", "중량", "금액", "단가"]]
+
+    # 행 순서 고정
+    maker_order = [
+        "포스코",
+        "JFE STEEL(S)",
+        "세아창원특수강",
+        "현대제철",
+        "세아베스틸",
+        "합계",
+    ]
+
+    # 데이터 없더라도 행 유지
+    pvt2 = pvt.set_index("메이커").reindex(maker_order)
+
+    # 숫자 NaN → 0
+    for c in ["중량", "금액", "단가"]:
+        pvt2[c] = pd.to_numeric(pvt2[c], errors="coerce").fillna(0)
+
+    return pvt2.reset_index()
+
+##### 원재료 입고-기초 단가 차이 거래처 기준 #####
+
+def create_10(year: int, month: int, data: pd.DataFrame) -> pd.DataFrame:
+    df = data.copy()
+
+    df["연도"] = pd.to_numeric(df["연도"], errors="coerce")
+    df["월"] = pd.to_numeric(df["월"], errors="coerce")
+    df["실적"] = pd.to_numeric(df["실적"].astype(str).str.replace(",", ""), errors="coerce")
+
+    target_name = "원재료 입고 단가차이_거래처 기준"
+    df = df[(df["구분1"] == target_name) & (df["연도"] == year) & (df["월"] == month)].copy()
+
+    pvt = (
+        df.pivot_table(
+            index="구분2",      # 메이커
+            columns="구분3",    # 금액/단가
+            values="실적",
+            aggfunc="sum",
+            fill_value=0,
+        )
+        .reset_index()
+        .rename(columns={"구분2": "메이커"})
+    )
+
+    for col in ["금액", "단가"]:
+        if col not in pvt.columns:
+            pvt[col] = 0
+
+    pvt = pvt[["메이커", "금액", "단가"]]
+
+    # 행 순서 고정
+    maker_order = [
+        "포스코_일반",
+        "포스코_산업",
+        "JFE STEEL(S)",
+        "세아창원특수강",
+        "현대제철",
+        "세아베스틸",
+        "합계",
+    ]
+
+    # 데이터 없더라도 행 유지
+    pvt2 = pvt.set_index("메이커").reindex(maker_order)
+
+    # 숫자 NaN → 0
+    for c in ["금액", "단가"]:
+        pvt2[c] = pd.to_numeric(pvt2[c], errors="coerce").fillna(0)
+
+    return pvt2.reset_index()
+
+
 
 ## 제품수불표
 
 # === 제품수불표: 연산 전용 ===
-import pandas as pd
-import numpy as np
-import re
+
 
 def _pf_to_num(s: pd.Series) -> pd.Series:
     s = s.fillna("").astype(str)
@@ -6742,7 +6840,8 @@ def build_table_60(df_src: pd.DataFrame, year: int, month: int):
     disp = disp[col_order]
 
     #구분1 중복제거
-    disp["구분1"] = disp["구분1"].mask(disp["구분1"].duplicated(), "")
+    disp["구분1"] = disp["구분1"].mask(disp["구분1"].duplicated(keep="last"), "")
+
 
     meta = {
         "prev_year": prev_year,

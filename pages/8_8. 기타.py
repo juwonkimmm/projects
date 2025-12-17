@@ -350,6 +350,57 @@ with t1:
             },
         ]
 
+        spacer_rules1 = [
+            {
+                'selector': f'tbody tr:nth-child({r})',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+            for r in (3,8,13,18,23,26,27)
+
+        ]
+
+        styles += spacer_rules1
+
+        spacer_rules2 = [
+            {
+                'selector': f'tbody tr:nth-child({r}) td:nth-child({i})',
+                'props': [('border-bottom','2px solid white !important')]
+               
+            }
+            for r in (4,5,6,7,9,10,11,12,14,15,16,17,19,20,21,22,24,25)
+            for i in (1,2)
+        ]
+
+        styles += spacer_rules2
+
+        spacer_rules2 = [
+            {
+                'selector': f'tbody tr:nth-child({r}) td:nth-child(2)',
+                'props': [('border-right','3px solid gray !important')]
+               
+            }
+            for r in (4,5,6,7,9,10,11,12,14,15,16,17,19,20,21,22,24,25)
+
+        ]
+
+        styles += spacer_rules2
+
+        spacer_rules2 = [
+            {
+                'selector': f'tbody tr:nth-child({r}) td:nth-child(3)',
+                'props': [('border-bottom','3px solid gray !important')]
+               
+            }
+            for r in (7,12,17,22,25)
+
+        ]
+
+        styles += spacer_rules2
+
+        for i in [7,12,17,22,25,26,27]:
+            body.iloc[i, 2] = ""
+
         display_styled_df(body, styles=styles, already_flat=True)
 
     except Exception as e:
