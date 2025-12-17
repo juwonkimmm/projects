@@ -6986,7 +6986,7 @@ def build_grade_sales_table_68(df_src: pd.DataFrame, year: int, month: int):
         # --------------------------
         row = {
             "구분1": plant,
-            "구분2": "합계",
+            "구분2": "",
         }
 
         # 직전 3개 연도 합계 (누계 기준)
@@ -7026,9 +7026,9 @@ def build_grade_sales_table_68(df_src: pd.DataFrame, year: int, month: int):
     for plant in disp["구분1"].unique():
         mask = disp["구분1"] == plant
         idxs = disp.index[mask]
-        # 첫 행(idx[0])을 제외하고 나머지 공장명 삭제
+        # 마지막행 을 제외하고 나머지 공장명 삭제
         if len(idxs) > 1:
-            disp.loc[idxs[1:], "구분1"] = ""
+            disp.loc[idxs[:-1], "구분1"] = ""
 
     return disp
 
@@ -7195,7 +7195,7 @@ def build_chq_f69(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
         # ===========================
         row = {
             "구분1": plant,
-            "구분2": "합계",
+            "구분2": "",
         }
 
         # 직전 3개 연도 (누계) → 비열처리+열처리
@@ -7220,9 +7220,9 @@ def build_chq_f69(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
     for plant in disp["구분1"].unique():
         mask = disp["구분1"] == plant
         idxs = disp.index[mask]
-        # 첫 행(idx[0])을 제외하고 나머지 공장명 삭제
+        # 마지막행 을 제외하고 나머지 공장명 삭제
         if len(idxs) > 1:
-            disp.loc[idxs[1:], "구분1"] = ""
+            disp.loc[idxs[:-1], "구분1"] = ""
 
     return disp
 
@@ -7441,7 +7441,7 @@ def build_f70(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
         # ===========================
         row = {
             "구분1": plant,
-            "구분2": "합계",
+            "구분2": "",
         }
 
         # 직전 3개 연도 (누계)
@@ -7466,9 +7466,9 @@ def build_f70(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
     for plant in disp["구분1"].unique():
         mask = disp["구분1"] == plant
         idxs = disp.index[mask]
-        # 첫 행(idx[0])을 제외하고 나머지 공장명 삭제
+        # 마지막행 을 제외하고 나머지 공장명 삭제
         if len(idxs) > 1:
-            disp.loc[idxs[1:], "구분1"] = ""
+            disp.loc[idxs[:-1], "구분1"] = ""
 
     return disp
 
@@ -7640,7 +7640,7 @@ def build_f71(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
         # ===========================
         row = {
             "구분1": plant,
-            "구분2": "합계",
+            "구분2": "",
         }
 
         # 직전 3개 연도 (누계) → 비열처리+열처리
@@ -7669,9 +7669,9 @@ def build_f71(df_src: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
     for plant in disp["구분1"].unique():
         mask = disp["구분1"] == plant
         idxs = disp.index[mask]
-        # 첫 행(idx[0])을 제외하고 나머지 공장명 삭제
+        # 마지막행 을 제외하고 나머지 공장명 삭제
         if len(idxs) > 1:
-            disp.loc[idxs[1:], "구분1"] = ""
+            disp.loc[idxs[:-1], "구분1"] = ""
 
     return disp
 
@@ -8232,7 +8232,7 @@ def create_inv_table_from_company(
         mask = res['구분2'] == cat
         idxs = res.index[mask].tolist()
         if len(idxs) > 1:
-            res.loc[idxs[1:], '구분2'] = ""   # 첫 행만 남기고 나머지 비움
+            res.loc[idxs[:-1], '구분2'] = ""   # 첫 행만 남기고 나머지 비움
 
     # 8) 열 순서 및 인덱스 정리
     res = res[['구분2', '구분3'] + year_cols + month_cols + ['증량', '증감률']]
@@ -8449,7 +8449,7 @@ def create_defect_longinv_table_from_company(
         mask = idx_df['구분2'] == cat
         idxs = idx_df.index[mask].tolist()
         if len(idxs) > 1:
-            idx_df.loc[idxs[1:], '구분2'] = ""   # 첫 행만 값 유지, 나머지 공백
+            idx_df.loc[idxs[:-1], '구분2'] = ""   # 마지막 행만
 
     # 3) 수정된 인덱스로 다시 MultiIndex 구성
     res.index = pd.MultiIndex.from_frame(idx_df)
@@ -8660,7 +8660,7 @@ def create_age_table_from_company(
         mask = idx_df['구분2'] == cat
         idxs = idx_df.index[mask].tolist()
         if len(idxs) > 1:
-            idx_df.loc[idxs[1:], '구분2'] = ""   # 첫 행만 값 유지, 나머지는 공백
+            idx_df.loc[idxs[:-1], '구분2'] = ""   # 첫 행만 값 유지, 나머지는 공백
 
     # 수정된 인덱스로 다시 MultiIndex 구성
     res.index = pd.MultiIndex.from_frame(idx_df)
@@ -8923,9 +8923,6 @@ def create_ar_status_table_from_company(
 
 ##### 해외법인실적 인원현황표 #####
 
-import pandas as pd
-
-
 def create_87(year: int, month: int, data: pd.DataFrame) -> pd.DataFrame:
     """
     인원현황표 생성
@@ -9063,13 +9060,12 @@ def create_87(year: int, month: int, data: pd.DataFrame) -> pd.DataFrame:
     disp = disp[cols]
 
 
-
     for plant in disp["구분1"].unique():
         mask = disp["구분1"] == plant
         idxs = disp.index[mask]
-        # 첫 행(idx[0])을 제외하고 나머지 공장명 삭제
+        # 마지막행 을 제외하고 나머지 공장명 삭제
         if len(idxs) > 1:
-            disp.loc[idxs[1:], "구분1"] = ""
+            disp.loc[idxs[:-1], "구분1"] = ""
 
     return disp
 
@@ -9200,9 +9196,9 @@ def create_89(year: int, month: int, data: pd.DataFrame) -> pd.DataFrame:
     for plant in disp["구분1"].unique():
         mask = disp["구분1"] == plant
         idxs = disp.index[mask]
-        # 첫 행(idx[0])을 제외하고 나머지 공장명 삭제
+        # 마지막행 을 제외하고 나머지 공장명 삭제
         if len(idxs) > 1:
-            disp.loc[idxs[1:], "구분1"] = ""
+            disp.loc[idxs[:-1], "구분1"] = ""
 
     return disp
 
