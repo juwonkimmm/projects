@@ -868,6 +868,17 @@ with t2:
 
         styles += spacer_rules6
 
+        spacer_rules6 = [
+            {
+                'selector': f'tbody tr:nth-child(2) td:nth-child(1)',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+
+        ]
+
+        styles += spacer_rules6
+
 
         display_styled_df(disp_vis, styles=styles, already_flat=True)
         display_memo('f_21', year, month)
