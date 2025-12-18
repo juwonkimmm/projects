@@ -3684,7 +3684,6 @@ with t3:
         importlib.invalidate_caches()
         importlib.reload(modules)
 
-        # 모듈: 톤/천개/억원 + 끊기(버림)까지 완료된 결과
         base = modules.create_sales_plan_vs_actual(
             year=int(st.session_state['year']),
             month=int(st.session_state['month']),
@@ -3775,8 +3774,16 @@ with t3:
                 continue
             metric = str(col[1]).strip()
             if metric == "단가":
-                s = to_numeric(disp_values[col])
-                disp_values[col] = s.apply(lambda v: round_then_strip(v, -2, 1000))
+                    s = to_numeric(disp_values[col])
+
+                    disp_values[col] = s.apply(
+                        lambda v: (
+                            np.nan if pd.isna(v) else
+                            int(float(v)) if abs(float(v)) < 100_000 else   #10만 미만은 그대로 출력
+                            round_then_strip(v, -2, 1000)                   
+                        )
+                    )
+
             elif metric == "매출액":
                 s = to_numeric(disp_values[col])
                 # 만의자리 반올림 
@@ -3786,7 +3793,7 @@ with t3:
                 s = to_numeric(disp_values[col])
                 #  백만 이상일 때만 10만자리 반올림 → 10만 단위 표기
                 disp_values[col] = s.apply(
-                    lambda v: (round_then_strip(v, -5, 100000)
+                    lambda v: (round_then_strip(v, -3, 1000)
                             if (not pd.isna(v) and abs(float(v)) >= 1_000_000)
                             else (np.nan if pd.isna(v) else int(float(v))))
                 )

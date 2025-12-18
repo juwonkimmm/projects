@@ -413,6 +413,7 @@ with t1:
                     ('text-align', 'center'),
                     ('padding', '6px 8px'),
                     ('font-weight', '600'),
+                    ('border-top','3px solid gray !important')
                 ]
             },
             # 헤더 2행
@@ -1708,7 +1709,7 @@ with t3:
             },
 
             # 헤더 1·2·3행
-            {'selector': 'tbody tr:nth-child(1) td', 'props': [('text-align','center'), ('padding','8px 8px'),  ('line-height','1.1'), ('font-weight','600')]},
+            {'selector': 'tbody tr:nth-child(1) td', 'props': [('text-align','center'), ('padding','8px 8px'),  ('line-height','1.1'), ('font-weight','600'),('border-top','3px solid gray !important')]},
             {'selector': 'tbody tr:nth-child(2) td', 'props': [('text-align','center'), ('padding','10px 8px'), ('line-height','1.4'), ('font-weight','600')]},
             {'selector': 'tbody tr:nth-child(2) td:nth-child(2)', 'props': [('text-align','center')]},
 
@@ -1961,7 +1962,7 @@ with t3:
             },
 
             # 헤더 1·2·3행
-            {'selector': 'tbody tr:nth-child(1) td', 'props': [('text-align','center'), ('padding','8px 8px'),  ('line-height','1.1'), ('font-weight','600')]},
+            {'selector': 'tbody tr:nth-child(1) td', 'props': [('text-align','center'), ('padding','8px 8px'),  ('line-height','1.1'), ('font-weight','600'),('border-top','3px solid gray !important')]},
             {'selector': 'tbody tr:nth-child(2) td', 'props': [('text-align','center'), ('padding','10px 8px'), ('line-height','1.4'), ('font-weight','600')]},
             {'selector': 'tbody tr:nth-child(2) td:nth-child(2)', 'props': [('text-align','center')]},
 
@@ -2214,7 +2215,7 @@ with t3:
             },
 
             # 헤더 1·2·3행
-            {'selector': 'tbody tr:nth-child(1) td', 'props': [('text-align','center'), ('padding','8px 8px'),  ('line-height','1.1'), ('font-weight','600')]},
+            {'selector': 'tbody tr:nth-child(1) td', 'props': [('text-align','center'), ('padding','8px 8px'),  ('line-height','1.1'), ('font-weight','600'),('border-top','3px solid gray !important')]},
             {'selector': 'tbody tr:nth-child(2) td', 'props': [('text-align','center'), ('padding','10px 8px'), ('line-height','1.4'), ('font-weight','600')]},
             {'selector': 'tbody tr:nth-child(2) td:nth-child(2)', 'props': [('text-align','center')]},
 
@@ -2409,7 +2410,7 @@ with t4:
 
             # hdr1(첫 행) 중앙 정렬 + 볼드
             {"selector": "tbody tr:nth-child(1) td",
-             "props": [("font-weight","700"), ("text-align","center")]},
+             "props": [("font-weight","700"), ("text-align","center"),('border-top','3px solid gray !important')]},
 
              # hdr2(두번째 행) 중앙 정렬 + 볼드
             {"selector": "tbody tr:nth-child(2) td",
@@ -2680,7 +2681,7 @@ with t4:
             {"selector": "thead", "props": [("display", "none")]},
             {
                 "selector": "tbody tr:nth-child(1) td",
-                "props": [("font-weight","700"), ("text-align","center")],
+                "props": [("font-weight","700"), ("text-align","center"),('border-top','3px solid gray !important')],
             },
             {
                 "selector": "tbody tr:nth-child(2) td",
@@ -2958,7 +2959,7 @@ with t4:
             {"selector": "thead", "props": [("display", "none")]},
             {
                 "selector": "tbody tr:nth-child(1) td",
-                "props": [("font-weight","700"), ("text-align","center")],
+                "props": [("font-weight","700"), ("text-align","center"),('border-top','3px solid gray !important')],
             },
             {
                 "selector": "tbody tr:nth-child(2) td",
@@ -3235,7 +3236,7 @@ with t4:
             {"selector": "thead", "props": [("display", "none")]},
             {
                 "selector": "tbody tr:nth-child(1) td",
-                "props": [("font-weight","700"), ("text-align","center")],
+                "props": [("font-weight","700"), ("text-align","center"),('border-top','3px solid gray !important')],
             },
             {
                 "selector": "tbody tr:nth-child(2) td",
@@ -3511,7 +3512,8 @@ with t6:
                 'selector': 'tbody tr:nth-child(1) td',
                 'props': [('text-align', 'center'),
                         ('padding', '4px 6px'),
-                        ('font-weight', '600')]
+                        ('font-weight', '600'),
+                        ('border-top','3px solid gray !important')],
             },
             {
                 'selector': 'tbody tr:nth-child(2) td',
@@ -3799,7 +3801,8 @@ with t6:
                 'selector': 'tbody tr:nth-child(1) td',
                 'props': [('text-align', 'center'),
                         ('padding', '4px 6px'),
-                        ('font-weight', '600')]
+                        ('font-weight', '600'),
+                        ('border-top','3px solid gray !important')]
             },
             {
                 'selector': 'tbody tr:nth-child(2) td',
@@ -4087,7 +4090,8 @@ with t6:
                 'selector': 'tbody tr:nth-child(1) td',
                 'props': [('text-align', 'center'),
                         ('padding', '4px 6px'),
-                        ('font-weight', '600')]
+                        ('font-weight', '600'),
+                        ('border-top','3px solid gray !important')]
             },
             {
                 'selector': 'tbody tr:nth-child(2) td',
@@ -4413,6 +4417,7 @@ with t6:
                     ('text-align', 'center'),
                     ('padding', '4px 6px'),
                     ('font-weight', '600'),
+                    ('border-top','3px solid gray !important'),
                 ],
             },
             {
@@ -4774,6 +4779,7 @@ with t6:
                     ('text-align', 'center'),
                     ('padding', '4px 6px'),
                     ('font-weight', '600'),
+                    ('border-top','3px solid gray !important'),
                 ],
             },
             {
@@ -5132,6 +5138,7 @@ with t6:
                     ('text-align', 'center'),
                     ('padding', '4px 6px'),
                     ('font-weight', '600'),
+                    ('border-top','3px solid gray !important'),
                 ],
             },
             {
@@ -5461,7 +5468,9 @@ with t6:
                 'selector': 'tbody tr:nth-child(1) td',
                 'props': [('text-align', 'center'),
                         ('padding', '4px 6px'),
-                        ('font-weight', '600')],
+                        ('font-weight', '600'),
+                        ('border-top','3px solid gray !important')],
+                        
             },
             {
                 'selector': 'tbody tr:nth-child(2) td',
@@ -5815,13 +5824,14 @@ with t6:
                 'selector': 'tbody tr:nth-child(1) td',
                 'props': [('text-align', 'center'),
                         ('padding', '4px 6px'),
-                        ('font-weight', '600')],
+                        ('font-weight', '600'),('border-top','3px solid gray !important')],
             },
             {
                 'selector': 'tbody tr:nth-child(2) td',
                 'props': [('text-align', 'center'),
                         ('padding', '8px 6px'),
-                        ('font-weight', '600')],
+                        ('font-weight', '600'),
+                        ],
             },
             {
                 'selector': 'tbody tr:nth-child(3) td',
@@ -6168,7 +6178,8 @@ with t6:
                 'selector': 'tbody tr:nth-child(1) td',
                 'props': [('text-align', 'center'),
                         ('padding', '4px 6px'),
-                        ('font-weight', '600')],
+                        ('font-weight', '600'),
+                        ('border-top','3px solid gray !important')],
             },
             {
                 'selector': 'tbody tr:nth-child(2) td',
@@ -6479,7 +6490,7 @@ with t7:
                 'selector': 'tbody tr:nth-child(1) td',
                 'props': [('text-align', 'center'),
                         ('padding', '4px 6px'),
-                        ('font-weight', '600')],
+                        ('font-weight', '600'),('border-top','3px solid gray !important')],
             },
             {
                 'selector': 'tbody tr:nth-child(2) td',
@@ -6731,7 +6742,7 @@ with t7:
                 'selector': 'tbody tr:nth-child(1) td',
                 'props': [('text-align', 'center'),
                         ('padding', '4px 6px'),
-                        ('font-weight', '600')],
+                        ('font-weight', '600'),('border-top','3px solid gray !important')],
             },
             {
                 'selector': 'tbody tr:nth-child(2) td',
@@ -6991,7 +7002,7 @@ with t7:
                 'selector': 'tbody tr:nth-child(1) td',
                 'props': [('text-align', 'center'),
                         ('padding', '4px 6px'),
-                        ('font-weight', '600')],
+                        ('font-weight', '600'),('border-top','3px solid gray !important')],
             },
             {
                 'selector': 'tbody tr:nth-child(2) td',
@@ -7259,6 +7270,7 @@ with t8:
                     ("text-align", "center"),
                     ("padding", "4px 6px"),
                     ("font-weight", "600"),
+                    ('border-top','3px solid gray !important'),
                 ],
             },
             # 헤더 2행
@@ -7486,6 +7498,7 @@ with t8:
                     ("text-align", "center"),
                     ("padding", "4px 6px"),
                     ("font-weight", "600"),
+                    ('border-top','3px solid gray !important'),
                 ],
             },
             # 헤더 2행

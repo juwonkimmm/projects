@@ -4543,16 +4543,40 @@ def create_sales_plan_vs_actual(year: int, month: int, data: pd.DataFrame) -> pd
     sum_rows(at_train,                     "기차배건")
     sum_rows(china,                        "포스세아")
     sum_rows(["포스세아", "기차배건"],      "중국 계")     # 중국 계 = 포스세아 + 기차배건
+    # 판매량은 포스세아 값 그대로 사용
+    if ("중국 계" in out.index) and ("포스세아" in out.index):
+        for g in ["사업 계획(연간)", "사업 계획(누적)", "실적(누적)", "실적-계획"]:
+            out.loc["중국 계", (g, "판매량")] = out.loc["포스세아", (g, "판매량")]
+
+        # 판매량 달성률도 포스세아 기준으로 동일하게
+        out.loc["중국 계", ("달성률(%)", "판매량")] = out.loc["포스세아", ("달성률(%)", "판매량")]
+
+
     sum_rows(thailand,                     "태국 계")
 
     # 국내 계 = 국내(선재) + 국내(AT)  (판매량/매출액만 사용)
     sum_rows(["국내(선재)", "국내(AT)"],   "국내 계")
+
+    # 국내 계 판매량은 국내(선재) 값 
+    if ("국내 계" in out.index) and ("국내(선재)" in out.index):
+        for g in ["사업 계획(연간)", "사업 계획(누적)", "실적(누적)", "실적-계획"]:
+            out.loc["국내 계", (g, "판매량")] = out.loc["국내(선재)", (g, "판매량")]
+
+        # 판매량을 바꿨으니, 판매량 기준으로 달성률(판매량)도 국내(선재)와 동일하게 맞춤
+        out.loc["국내 계", ("달성률(%)", "판매량")] = out.loc["국내(선재)", ("달성률(%)", "판매량")]
+
 
     # AT계 = 국내(AT) + 기차배건
     sum_rows(["국내(AT)", "기차배건"],     "AT 계")
 
     # total = 매출액만: 국내 계 + 중국 계 + 태국 계
     sum_rows(["국내 계", "중국 계", "태국 계"], "total")
+    
+    # 선재 계 = 국내(선재) + 중국 계 + 태국 계  (AT 제외)
+    sum_rows(["국내(선재)", "중국 계", "태국 계"], "선재 계")
+
+
+    
 
     # 8) 열 비우기/제한 (요청사항)
     # 국내 계: 판매량/매출액만 표시 (단가/달성률/차이의 단가는 NaN)
@@ -4573,8 +4597,8 @@ def create_sales_plan_vs_actual(year: int, month: int, data: pd.DataFrame) -> pd
         # out.loc["total", ("달성률(%)", "매출액")] = np.nan
 
     # 선재 계: 생성만 하고 전부 빈칸
-    blank_label = "선재 계"
-    out.loc[blank_label] = np.nan
+    # blank_label = "선재 계"
+    # out.loc[blank_label] = np.nan
 
     # 9) 표시 순서
     order = [

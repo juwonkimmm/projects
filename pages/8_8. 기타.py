@@ -303,6 +303,13 @@ with t1:
         # ==== 3. 스타일 ====
         styles = [
             {"selector": "thead", "props": [("display", "none")]},
+            
+            {
+                'selector': 'tbody tr:nth-child(1) td',
+                'props': [
+                    ('border-top', '3px solid gray !important')
+                ]
+            },
 
             {
                 "selector": "tbody tr td:nth-child(1)",
