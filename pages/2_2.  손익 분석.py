@@ -1666,6 +1666,18 @@ with t4:
 
         styles += spacer_rules1
 
+        spacer_rules6 = [
+            {
+                'selector': f'tbody tr:nth-child(1) td:nth-child({r})',
+                'props': [('border-right','2px solid white !important')]
+               
+            }
+            for r in (3,4,5,7,8,9,11,12,13)
+
+        ]
+
+        styles += spacer_rules6
+
         for i in [3,4,5,7,8,9,11,12,13]:
             body.iloc[0, i] = ""
 
