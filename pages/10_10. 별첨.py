@@ -340,7 +340,7 @@ with t4:
 
             {
                 "selector": "th.col_heading",
-                "props": [("text-align", "center")]
+                "props": [("text-align", "center"),('border-top','3px solid gray !important')]
             },
 
             {
@@ -398,6 +398,7 @@ with t4:
         ]
 
         styles += spacer_rules17
+
 
 
         
