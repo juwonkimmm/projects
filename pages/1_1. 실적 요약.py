@@ -1506,7 +1506,7 @@ with t1:
             spacer_rules4 = [
                 {
                     'selector': f'tbody tr:nth-child(2) td:nth-child(1)',
-                    'props': [('border-right','3px solid gray ')],
+                    'props': [('border-right','2px solid white ')],
                 }
             ]
             styles  += spacer_rules4
