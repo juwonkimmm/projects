@@ -539,7 +539,7 @@ with t5:
 
             {
                 "selector": "tbody tr:nth-child(1) td",
-                "props": [("font-weight", "700"), ("text-align", "center")],
+                "props": [("font-weight", "700"), ("text-align", "center"),('border-top','3px solid gray !important')],
             },
 
             {
@@ -829,7 +829,7 @@ with t5:
 
             {
                 "selector": "tbody tr:nth-child(1) td",
-                "props": [("font-weight", "700"), ("text-align", "center")],
+                "props": [("font-weight", "700"), ("text-align", "center"),('border-top','3px solid gray !important')],
             },
 
             {
@@ -1138,7 +1138,7 @@ with t5:
 
             {
                 "selector": "tbody tr:nth-child(1) td",
-                "props": [("font-weight", "700"), ("text-align", "center")],
+                "props": [("font-weight", "700"), ("text-align", "center"),('border-top','3px solid gray !important')],
             },
 
             {
@@ -1455,7 +1455,7 @@ with t5:
 
             {
                 "selector": "tbody tr:nth-child(1) td",
-                "props": [("font-weight", "700"), ("text-align", "center")],
+                "props": [("font-weight", "700"), ("text-align", "center"),('border-top','3px solid gray !important')],
             },
 
             {
@@ -1574,6 +1574,8 @@ with t5:
         ]
 
         styles += spacer_rules18
+
+        
 
 
         
@@ -1740,7 +1742,7 @@ with t5:
 
             {
                 "selector": "tbody tr:nth-child(1) td",
-                "props": [("font-weight", "700"), ("text-align", "center")],
+                "props": [("font-weight", "700"), ("text-align", "center"),('border-top','3px solid gray !important')],
             },
 
             {
@@ -2078,7 +2080,7 @@ with t5:
             # 가짜 헤더 1,2,3 행
             {
                 "selector": "tbody tr:nth-child(1) td",
-                "props": [("font-weight", "700"), ("text-align", "center")],
+                "props": [("font-weight", "700"), ("text-align", "center"),('border-top','3px solid gray !important')],
             },
             {
                 "selector": "tbody tr:nth-child(2) td",
@@ -2185,6 +2187,8 @@ with t5:
         ]
 
         styles += spacer_rules18
+
+
 
 
 
